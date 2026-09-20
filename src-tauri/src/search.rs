@@ -1,6 +1,7 @@
 //! Search lists titles via yt-dlp `--flat-playlist`. Play then downloads a
 //! local temp file, remuxes it for rodio, and deletes it when the track changes.
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -467,7 +468,7 @@ pub fn pick_piped_audio(value: &Value) -> Option<(String, String)> {
 }
 
 fn http_get(url: &str) -> AppResult<String> {
-    let output = Command::new(find_curl()?)
+    let output = spawn_tool(find_curl()?)
         .args(["-fsSL", "--max-time", "25", "-A", "Mozilla/5.0", url])
         .output()
         .map_err(|error| AppError::msg(format!("could not run curl: {error}")))?;
@@ -479,7 +480,7 @@ fn http_get(url: &str) -> AppResult<String> {
 
 fn http_download(url: &str, dest: &Path) -> AppResult<()> {
     if let Ok(curl) = find_curl() {
-        let output = Command::new(curl)
+        let output = spawn_tool(curl)
             .args(["-fsSL", "--max-time", "90", "-A", "Mozilla/5.0", "-o"])
             .arg(dest)
             .arg(url)
@@ -572,7 +573,7 @@ fn remux_for_player(path: &Path) -> AppResult<PathBuf> {
             let _ = std::fs::remove_file(path);
             return Ok(dest);
         }
-        let output = Command::new(&ffmpeg)
+        let output = spawn_tool(&ffmpeg)
             .args(["-y", "-hide_banner", "-loglevel", "error", "-i"])
             .arg(path)
             .args(["-vn"])
@@ -605,17 +606,41 @@ fn find_ffmpeg() -> AppResult<PathBuf> {
 }
 
 fn find_tool(name: &str) -> Option<PathBuf> {
-    let mut dirs: Vec<PathBuf> =
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect();
-    dirs.push(PathBuf::from("/usr/bin"));
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".local/bin"));
+    }
     dirs.push(PathBuf::from("/usr/local/bin"));
+    dirs.push(PathBuf::from("/usr/bin"));
+    dirs.push(PathBuf::from("/bin"));
+    dirs.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    let mut seen = Vec::new();
     for dir in dirs {
+        if seen.iter().any(|item| item == &dir) {
+            continue;
+        }
+        seen.push(dir.clone());
+        if is_bundled_path(&dir) {
+            continue;
+        }
         let candidate = dir.join(name);
         if candidate.is_file() {
             return Some(candidate);
         }
     }
     None
+}
+
+pub fn is_bundled_path(path: &Path) -> bool {
+    if let Ok(appdir) = std::env::var("APPDIR") {
+        if !appdir.is_empty() && path.starts_with(&appdir) {
+            return true;
+        }
+    }
+    path.to_string_lossy().contains("/tmp/.mount_")
 }
 
 pub fn video_id_from_url(url: &str) -> Option<String> {
@@ -798,11 +823,148 @@ fn clean_query(query: &str) -> AppResult<String> {
 }
 
 fn node_available() -> bool {
-    Command::new("node")
+    spawn_tool("node")
         .arg("--version")
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
+}
+
+const CHILD_ENV_STRIP: &[&str] = &[
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PYTHONUSERBASE",
+    "PYTHONEXECUTABLE",
+    "PYTHONSAFEPATH",
+    "VIRTUAL_ENV",
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+    "APPDIR",
+    "APPIMAGE",
+    "ARGV0",
+    "GCONV_PATH",
+    "LOCPATH",
+    "PERL5LIB",
+    "PERLLIB",
+    "GTK_PATH",
+    "GTK_DATA_PREFIX",
+    "GTK_EXE_PREFIX",
+    "GTK_IM_MODULE_FILE",
+    "GIO_EXTRA_MODULES",
+    "GSETTINGS_SCHEMA_DIR",
+    "GDK_PIXBUF_MODULE_FILE",
+    "QT_PLUGIN_PATH",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+    "GI_TYPELIB_PATH",
+];
+
+fn spawn_tool(bin: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(bin);
+    // AppImage AppRun exports GTK/GIO/Python paths that point at the squashfs.
+    // Host yt-dlp is a Python zipapp; ffmpeg and curl need the host linker
+    // and certs. Named vars are always dropped; anything whose value lives
+    // under $APPDIR or /tmp/.mount_* is dropped too.
+    for (key, value) in std::env::vars_os() {
+        if should_strip_child_env(&key, &value) {
+            command.env_remove(&key);
+        }
+    }
+    command.env("PATH", host_path());
+    command
+}
+
+pub fn should_strip_child_env(key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> bool {
+    let key = key.as_ref();
+    if key == "PATH" || keep_child_env(key) {
+        return false;
+    }
+    if CHILD_ENV_STRIP.iter().any(|item| OsStr::new(item) == key) {
+        return true;
+    }
+    env_value_is_bundled(value.as_ref())
+}
+
+fn keep_child_env(key: &OsStr) -> bool {
+    let Some(name) = key.to_str() else {
+        return false;
+    };
+    if name.starts_with("LC_") {
+        return true;
+    }
+    matches!(
+        name,
+        "HOME"
+            | "USER"
+            | "LOGNAME"
+            | "USERNAME"
+            | "SHELL"
+            | "DISPLAY"
+            | "WAYLAND_DISPLAY"
+            | "XAUTHORITY"
+            | "XDG_RUNTIME_DIR"
+            | "XDG_SESSION_TYPE"
+            | "XDG_SESSION_CLASS"
+            | "XDG_SESSION_DESKTOP"
+            | "XDG_CURRENT_DESKTOP"
+            | "XDG_MENU_PREFIX"
+            | "XDG_CONFIG_HOME"
+            | "XDG_CACHE_HOME"
+            | "XDG_STATE_HOME"
+            | "XDG_DATA_HOME"
+            | "DESKTOP_SESSION"
+            | "DBUS_SESSION_BUS_ADDRESS"
+            | "DBUS_SYSTEM_BUS_ADDRESS"
+            | "LANG"
+            | "LANGUAGE"
+            | "TZ"
+            | "TERM"
+            | "COLORTERM"
+            | "http_proxy"
+            | "https_proxy"
+            | "HTTP_PROXY"
+            | "HTTPS_PROXY"
+            | "no_proxy"
+            | "NO_PROXY"
+            | "all_proxy"
+            | "ALL_PROXY"
+            | "PULSE_SERVER"
+            | "PULSE_COOKIE"
+            | "PIPEWIRE_RUNTIME_DIR"
+            | "AUDIOS_YTDLP"
+            | "SSH_AUTH_SOCK"
+    )
+}
+
+fn env_value_is_bundled(value: &OsStr) -> bool {
+    value
+        .to_string_lossy()
+        .split(|ch| ch == ':' || ch == '\n' || ch == ';')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .any(|part| is_bundled_path(Path::new(part)))
+}
+
+fn host_path() -> std::ffi::OsString {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        dirs.push(home.join(".local/bin"));
+        dirs.push(home.join(".local/share/pipx/venvs/yt-dlp/bin"));
+    }
+    dirs.push(PathBuf::from("/usr/local/bin"));
+    dirs.push(PathBuf::from("/usr/bin"));
+    dirs.push(PathBuf::from("/bin"));
+    for dir in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) {
+        if is_bundled_path(&dir) {
+            continue;
+        }
+        if !dirs.iter().any(|item| item == &dir) {
+            dirs.push(dir);
+        }
+    }
+    std::env::join_paths(dirs).unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into())
 }
 
 fn ytdlp_json(args: &[&str]) -> AppResult<Value> {
@@ -814,7 +976,7 @@ fn ytdlp_json(args: &[&str]) -> AppResult<Value> {
 
 fn run_ytdlp(args: &[&str]) -> AppResult<String> {
     let bin = find_ytdlp()?;
-    let mut command = Command::new(&bin);
+    let mut command = spawn_tool(&bin);
     command.args(YTDLP_BASE);
     if node_available() {
         command.args(["--js-runtimes", "node"]);
@@ -833,7 +995,7 @@ fn run_ytdlp(args: &[&str]) -> AppResult<String> {
 fn find_ytdlp() -> AppResult<PathBuf> {
     if let Ok(path) = std::env::var("AUDIOS_YTDLP") {
         let path = PathBuf::from(path);
-        if path.is_file() {
+        if path.is_file() && !is_bundled_path(&path) {
             return Ok(path);
         }
     }
@@ -858,6 +1020,9 @@ fn find_ytdlp() -> AppResult<PathBuf> {
             continue;
         }
         seen.push(dir.clone());
+        if is_bundled_path(&dir) {
+            continue;
+        }
         for name in ["yt-dlp", "yt-dlp_linux"] {
             let candidate = dir.join(name);
             if !candidate.is_file() {
@@ -889,7 +1054,7 @@ fn find_ytdlp() -> AppResult<PathBuf> {
 }
 
 fn ytdlp_version(bin: &Path) -> Option<(u16, u8, u8)> {
-    let output = Command::new(bin).arg("--version").output().ok()?;
+    let output = spawn_tool(bin).arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -915,10 +1080,13 @@ fn cache_dir() -> PathBuf {
 }
 
 fn clean_ytdlp_error(error: &str) -> String {
+    if error.contains("Python path configuration") || error.contains("PYTHONHOME") {
+        return "yt-dlp could not start Python. Use a current AppImage and a system yt-dlp (not one from inside the package).".to_string();
+    }
     let line = error
         .lines()
         .map(str::trim)
-        .find(|line| !line.is_empty())
+        .find(|line| !line.is_empty() && !line.starts_with("Python path"))
         .unwrap_or("search failed");
     line.trim_start_matches("ERROR: ").to_string()
 }
@@ -1100,5 +1268,51 @@ mod tests {
         assert!(player_safe_path(Path::new("song.mp3")));
         assert!(!player_safe_path(Path::new("song.m4a")));
         assert!(!player_safe_path(Path::new("song.webm")));
+    }
+
+    #[test]
+    fn ignores_appimage_mount_paths() {
+        assert!(is_bundled_path(Path::new(
+            "/tmp/.mount_Audiosxyz/usr/bin/yt-dlp"
+        )));
+        assert!(!is_bundled_path(Path::new("/usr/bin/yt-dlp")));
+        assert!(!is_bundled_path(Path::new(
+            "/home/napkin/.local/bin/yt-dlp"
+        )));
+    }
+
+    #[test]
+    fn python_path_errors_are_readable() {
+        let msg = clean_ytdlp_error("Python path configuration:\n  PYTHONHOME = '/tmp/.mount_x'");
+        assert!(msg.contains("Python"));
+        assert!(!msg.starts_with("Python path configuration"));
+    }
+
+    #[test]
+    fn strips_appimage_child_env() {
+        assert!(should_strip_child_env("PYTHONHOME", "/usr"));
+        assert!(should_strip_child_env(
+            "GIO_EXTRA_MODULES",
+            "/tmp/.mount_x/usr/lib/gio/modules"
+        ));
+        assert!(should_strip_child_env(
+            "XDG_DATA_DIRS",
+            "/tmp/.mount_x/usr/share:/usr/share"
+        ));
+        assert!(should_strip_child_env(
+            "SSL_CERT_FILE",
+            "/tmp/.mount_x/usr/lib/ssl/cert.pem"
+        ));
+        assert!(!should_strip_child_env("HOME", "/home/napkin"));
+        assert!(!should_strip_child_env("DISPLAY", ":0"));
+        assert!(!should_strip_child_env("LANG", "en_US.UTF-8"));
+        assert!(!should_strip_child_env(
+            "PATH",
+            "/tmp/.mount_x/usr/bin:/usr/bin"
+        ));
+        assert!(!should_strip_child_env(
+            "SSL_CERT_FILE",
+            "/etc/ssl/certs/ca-certificates.crt"
+        ));
     }
 }

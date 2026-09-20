@@ -12,6 +12,7 @@
 <p align="center">
   <a href="docs/features.md">Features</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/releasing.md">Releasing</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="CREDITS.md">Credits</a> ·
   <a href="LICENSE">MIT</a>
@@ -82,6 +83,12 @@ npm run tauri build
 ```
 
 That writes an **AppImage** (one file you can run) and a **.deb** (for Ubuntu / Pop / Debian) under `src-tauri/target/release/bundle/`.
+
+`npm run tauri dev` is a normal process with your usual PATH. The AppImage is a squashfs with its own `PYTHONHOME` / `LD_LIBRARY_PATH` / GTK paths. After any Search or packaging change, open the **new** AppImage and play one search result before uploading it.
+
+## Releases
+
+GitHub Release assets are those two installer files only. Do not upload AppDir folders. Search still needs a **host** yt-dlp, ffmpeg, and curl; they are not inside the package.
 
 ## License
 

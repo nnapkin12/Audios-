@@ -24,7 +24,7 @@ Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.
 
 ## Search
 
-[`src-tauri/src/search.rs`](src-tauri/src/search.rs) lists results with `--flat-playlist`, then downloads and remuxes a temp file for play. Do not feed YouTube AAC `.m4a` straight to rodio. Do not pin `-f` to a named format like `bestaudio[ext=m4a]`.
+[`src-tauri/src/search.rs`](src-tauri/src/search.rs) lists results with `--flat-playlist`, then downloads and remuxes a temp file for play. Do not feed YouTube AAC `.m4a` straight to rodio. Do not pin `-f` to a named format like `bestaudio[ext=m4a]`. Child processes must go through `spawn_tool` so AppImage Python/GTK env is not leaked into host yt-dlp.
 
 ## Tags
 

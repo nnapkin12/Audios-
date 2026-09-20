@@ -1,6 +1,6 @@
 [package]
 name = "audios"
-version = "0.1.0"
+version = "0.1.1"
 description = "A local music player and metadata editor"
 authors = ["Audios contributors"]
 edition = "2021"
@@ -36,5 +36,5 @@ tempfile = "3"
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
+panic = "unwind"
 strip = true

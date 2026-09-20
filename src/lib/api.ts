@@ -108,25 +108,6 @@ export async function pickFolder(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
-export async function pickImage(): Promise<{ path: string; data: number[]; mime: string } | null> {
-  if (!isTauri()) return null;
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const selected = await open({
-    multiple: false,
-    title: "Add artwork",
-    filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp"] }],
-  });
-  if (typeof selected !== "string") return null;
-  const response = await fetch(selected.startsWith("file:") ? selected : `file://${selected}`);
-  try {
-    const buffer = await response.arrayBuffer();
-    const mime = guessMime(selected);
-    return { path: selected, data: Array.from(new Uint8Array(buffer)), mime };
-  } catch {
-    return { path: selected, data: [], mime: guessMime(selected) };
-  }
-}
-
 export async function pickSavePath(
   defaultName: string,
   title = "Export artwork",
@@ -138,15 +119,6 @@ export async function pickSavePath(
     defaultPath: defaultName,
   });
   return selected ?? null;
-}
-
-function guessMime(path: string): string {
-  const lower = path.toLowerCase();
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".bmp")) return "image/bmp";
-  return "image/jpeg";
 }
 
 export const api = {

@@ -42,7 +42,7 @@ Config is under the `directories` crate path for qualifier `com`, org `audios`, 
 
 Rodio keeps the output stream alive and queues Symphonia decoders. Gapless appends the next file about 1.5s before the current one ends. ReplayGain is a volume multiplier from track/album tags. Resume positions drop once a file is within three seconds of the end.
 
-Release builds use `panic = "abort"`. A decoder panic kills the process. Debug builds catch the known Symphonia panic and return an error instead.
+Release builds use `panic = "unwind"` so `catch_unwind` around the decoder can turn a Symphonia panic into an error instead of killing the AppImage.
 
 ## Queue order
 
@@ -70,7 +70,7 @@ The UI already has the title from step 1. Step 2 is not a second text search; it
 | Remux YouTube AAC `.m4a` to mp3/wav via ffmpeg | rodio 0.20 + Symphonia panics (`Seek errors should not occur during initialization`) on these MP4s. Library `.m4a` files can hit the same bug. |
 | `catch_unwind` around `Decoder::new` | The panic is inside rodio, not a `Result`. |
 | Invidious / Piped HTTP fallbacks | Last resort if yt-dlp download fails. Public instances go stale; treat the host list as disposable. |
-| `errorMessage()` on the frontend | Tauri serializes `AppError` as a string. `instanceof Error` hides the real message. |
+| Sanitize child env for yt-dlp / ffmpeg / curl; skip AppImage `APPDIR` on PATH | AppImage AppRun points PYTHONHOME, LD_LIBRARY_PATH, GIO_EXTRA_MODULES, GCONV_PATH, and other vars at `/tmp/.mount_*`. Host Python then dies with `Python path configuration:`. Named poison vars are dropped, plus any env whose value lives under the mount. |
 
 Search runtime dependencies: a **current** yt-dlp, `ffmpeg`, and `curl`. Spotify is not a source. There is no DRM-free Spotify stream API comparable to yt-dlp.
 
@@ -85,7 +85,7 @@ Search runtime dependencies: a **current** yt-dlp, `ffmpeg`, and `curl`. Spotify
 
 - `app.security.csp` is `null`. Tightening CSP will break `data:` cover art and local asset loads unless those are listed.
 - Search shells out to `yt-dlp`, `ffmpeg`, and `curl`. Queries are length-limited; URLs are passed as arguments, not a shell string.
-- `follow_links(true)` on library walks can loop on cyclic symlinks.
+- `follow_links(true)` on library walks. WalkDir skips symlink cycles; a symlink farm can still make a scan huge.
 
 ## Known issues / easy-to-break spots
 
