@@ -2,7 +2,7 @@
 name = "audios"
 version = "0.1.1"
 description = "A local music player and metadata editor"
-authors = ["Audios contributors"]
+authors = ["Audios Player contributors"]
 edition = "2021"
 license = "MIT"
 

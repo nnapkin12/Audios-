@@ -1,4 +1,6 @@
-export const GITHUB_URL = "https://github.com/nnapkin12/Audios-";
+/** GitHub / legal project name. The running app stays “Audios!”. */
+export const GITHUB_REPO = "AudiosPlayer";
+export const GITHUB_URL = "https://github.com/nnapkin12/AudiosPlayer";
 
 export const SVG_REPO_MARKS = [
   { name: "Music note", href: "https://www.svgrepo.com/svg/532711/music-note" },

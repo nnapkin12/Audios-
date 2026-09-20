@@ -18,6 +18,10 @@
   <a href="LICENSE">MIT</a>
 </p>
 
+<p align="center">
+  GitHub: <a href="https://github.com/nnapkin12/AudiosPlayer">AudiosPlayer</a>
+</p>
+
 ## What it is
 
 Audios! is a Music player/finder app for people who keep music locally. Open a file or a whole album tree, queue it, and play. There is a Search tab for finding music and saving it(or just hear it once, it caches and auto deletes when you play anything else), a Tags tab for artwork and all metadata, and Settings for themes (including ones you build yourself).

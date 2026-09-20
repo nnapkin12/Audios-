@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/nnapkin12/Audios-/blob/main/public/audios.png" alt="Audios!" width="360">
+  <img src="https://github.com/nnapkin12/AudiosPlayer/blob/main/public/audios.png" alt="Audios!" width="360">
 </p>
 
 # Credits
@@ -21,4 +21,4 @@ Each icon’s license is listed on its SVG Repo page.
 
 ## Source
 
-https://github.com/nnapkin12/Audios-
+https://github.com/nnapkin12/AudiosPlayer
