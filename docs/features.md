@@ -1,6 +1,8 @@
-# Features
+<p align="center">
+  <img src="public/audios.png" alt="Audios!" width="360">
+</p>
 
-Linux desktop player and tag editor. Playback, folder walks, and writes happen in Rust,  UI is React in a Tauri 2 / WebKitGTK window.
+# Audios! full Features list
 
 ## Player
 

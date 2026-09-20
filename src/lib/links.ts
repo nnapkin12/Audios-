@@ -1,4 +1,4 @@
-export const GITHUB_URL = "https://github.com/nnapkin12";
+export const GITHUB_URL = "https://github.com/nnapkin12/Audios-";
 
 export const SVG_REPO_MARKS = [
   { name: "Music note", href: "https://www.svgrepo.com/svg/532711/music-note" },

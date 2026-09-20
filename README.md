@@ -19,13 +19,13 @@
 
 ## What it is
 
-Audios! is a Music player/finder app for people who keep music locally. Open a file or a whole album tree, queue it, and play. There is a Search tab for looking something up and hearing it without adding it to your library(or saving it), a Tags tab for artwork and metadata, and Settings for themes (including ones you build yourself).
+Audios! is a Music player/finder app for people who keep music locally. Open a file or a whole album tree, queue it, and play. There is a Search tab for finding music and saving it(or just hear it once, it caches and auto deletes when you play anything else), a Tags tab for artwork and all metadata, and Settings for themes (including ones you build yourself).
 
-It is built for Linux. Playback, folder walking, and tag writes run in Rust. The window is a small React UI hosted by [Tauri](https://tauri.app/).
+It is built for Linux. Rust, and the window is a small React UI hosted by [Tauri](https://tauri.app/).
 
 It is **not** a Spotify client. Search talks to YouTube through [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
-## What you can do
+## Features
 
 - **Player** — open files or nested album folders. Queue, next / previous, repeat, shuffle, gapless, ReplayGain, resume where you left off.
 - **Search** — type a song name and artist, play it from a temp file, auto deletes that file when you change tracks, or save a copy if you want to keep it.
@@ -34,7 +34,7 @@ It is **not** a Spotify client. Search talks to YouTube through [yt-dlp](https:/
 
 A longer list lives in [docs/features.md](docs/features.md).
 
-## Run it
+## Run
 
 You need Rust 1.80+, Node 18+, and the usual Tauri / ALSA packages:
 

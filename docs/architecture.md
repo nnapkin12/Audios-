@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/audios.png" alt="Audios!" width="360">
+</p>
+
 # Architecture
 
 ```

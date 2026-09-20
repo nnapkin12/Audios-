@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/audios.png" alt="Audios!" width="360">
+</p>
+
 # Credits
 
 https://github.com/sunnypatell/sunnify-spotify-downloader
@@ -17,4 +21,4 @@ Each icon’s license is listed on its SVG Repo page.
 
 ## Source
 
-https://github.com/nnapkin12
+https://github.com/nnapkin12/Audios-

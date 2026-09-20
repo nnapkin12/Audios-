@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/audios.png" alt="Audios!" width="360">
+</p>
+
 # Contributing
 
 Audios! is a small desktop app with a hard split between UI and native work.
