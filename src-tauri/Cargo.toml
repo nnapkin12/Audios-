@@ -1,0 +1,40 @@
+[package]
+name = "audios"
+version = "0.1.0"
+description = "A local music player and metadata editor"
+authors = ["Audios contributors"]
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "audios_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+base64 = "0.22"
+directories = "6"
+fastrand = "2"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "bmp"] }
+lofty = "0.22"
+rodio = { version = "0.20", features = ["symphonia-all"] }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+thiserror = "2"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

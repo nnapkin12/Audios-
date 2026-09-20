@@ -1,0 +1,255 @@
+use std::fs::File;
+use std::io::BufReader;
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, Sender};
+use std::sync::Arc;
+use std::time::Duration;
+
+use rodio::{Decoder, OutputStream, Sink, Source};
+
+use crate::error::{AppError, AppResult};
+
+pub trait PlayerEngine: Send + Sync {
+    fn set_uri(&self, path: &Path) -> AppResult<()>;
+    fn play(&self) -> AppResult<()>;
+    fn pause(&self) -> AppResult<()>;
+    fn stop(&self) -> AppResult<()>;
+    fn seek(&self, position_ms: u64) -> AppResult<()>;
+    fn position_ms(&self) -> u64;
+    fn duration_ms(&self) -> u64;
+    fn set_volume(&self, volume: f64) -> AppResult<()>;
+    fn set_gapless_next(&self, path: Option<&Path>) -> AppResult<()>;
+    fn is_playing(&self) -> bool;
+    fn queued_sources(&self) -> usize;
+    fn is_empty(&self) -> bool;
+}
+
+enum Command {
+    SetUri(PathBuf, Sender<AppResult<()>>),
+    Play(Sender<AppResult<()>>),
+    Pause(Sender<AppResult<()>>),
+    Stop(Sender<AppResult<()>>),
+    Seek(u64, Sender<AppResult<()>>),
+    SetVolume(f64, Sender<AppResult<()>>),
+    Append(PathBuf, Sender<AppResult<()>>),
+}
+
+struct Shared {
+    position_ms: AtomicU64,
+    duration_ms: AtomicU64,
+    queued: AtomicUsize,
+    empty: AtomicBool,
+    playing: AtomicBool,
+}
+
+pub struct RodioEngine {
+    tx: Sender<Command>,
+    shared: Arc<Shared>,
+}
+
+impl RodioEngine {
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::channel::<Command>();
+        let shared = Arc::new(Shared {
+            position_ms: AtomicU64::new(0),
+            duration_ms: AtomicU64::new(0),
+            queued: AtomicUsize::new(0),
+            empty: AtomicBool::new(true),
+            playing: AtomicBool::new(false),
+        });
+        let thread_shared = Arc::clone(&shared);
+        std::thread::Builder::new()
+            .name("audios-rodio".into())
+            .spawn(move || audio_thread(rx, thread_shared))
+            .expect("audio thread");
+        Self { tx, shared }
+    }
+
+    fn send(&self, build: impl FnOnce(Sender<AppResult<()>>) -> Command) -> AppResult<()> {
+        let (tx, rx) = mpsc::channel();
+        self.tx
+            .send(build(tx))
+            .map_err(|_| AppError::msg("audio thread stopped"))?;
+        rx.recv()
+            .map_err(|_| AppError::msg("audio thread stopped"))?
+    }
+}
+
+impl PlayerEngine for RodioEngine {
+    fn set_uri(&self, path: &Path) -> AppResult<()> {
+        self.send(|reply| Command::SetUri(path.to_path_buf(), reply))
+    }
+
+    fn play(&self) -> AppResult<()> {
+        self.send(Command::Play)
+    }
+
+    fn pause(&self) -> AppResult<()> {
+        self.send(Command::Pause)
+    }
+
+    fn stop(&self) -> AppResult<()> {
+        self.send(Command::Stop)
+    }
+
+    fn seek(&self, position_ms: u64) -> AppResult<()> {
+        self.send(|reply| Command::Seek(position_ms, reply))
+    }
+
+    fn position_ms(&self) -> u64 {
+        self.shared.position_ms.load(Ordering::Relaxed)
+    }
+
+    fn duration_ms(&self) -> u64 {
+        self.shared.duration_ms.load(Ordering::Relaxed)
+    }
+
+    fn set_volume(&self, volume: f64) -> AppResult<()> {
+        self.send(|reply| Command::SetVolume(volume, reply))
+    }
+
+    fn set_gapless_next(&self, path: Option<&Path>) -> AppResult<()> {
+        let Some(path) = path else {
+            return Ok(());
+        };
+        self.send(|reply| Command::Append(path.to_path_buf(), reply))
+    }
+
+    fn is_playing(&self) -> bool {
+        self.shared.playing.load(Ordering::Relaxed)
+    }
+
+    fn queued_sources(&self) -> usize {
+        self.shared.queued.load(Ordering::Relaxed)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.shared.empty.load(Ordering::Relaxed)
+    }
+}
+
+fn audio_thread(rx: mpsc::Receiver<Command>, shared: Arc<Shared>) {
+    let Ok((_stream, handle)) = OutputStream::try_default() else {
+        while let Ok(command) = rx.recv() {
+            reply_err(command, AppError::msg("no audio output device"));
+        }
+        return;
+    };
+    let Ok(sink) = Sink::try_new(&handle) else {
+        while let Ok(command) = rx.recv() {
+            reply_err(command, AppError::msg("could not open audio sink"));
+        }
+        return;
+    };
+    sink.pause();
+
+    loop {
+        match rx.recv_timeout(Duration::from_millis(40)) {
+            Ok(command) => handle_command(&sink, &shared, command),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        publish(&sink, &shared);
+    }
+}
+
+fn handle_command(sink: &Sink, shared: &Shared, command: Command) {
+    match command {
+        Command::SetUri(path, reply) => {
+            let _ = reply.send(load_into(sink, shared, &path, true));
+        }
+        Command::Play(reply) => {
+            sink.play();
+            let _ = reply.send(Ok(()));
+        }
+        Command::Pause(reply) => {
+            sink.pause();
+            let _ = reply.send(Ok(()));
+        }
+        Command::Stop(reply) => {
+            sink.clear();
+            sink.pause();
+            shared.duration_ms.store(0, Ordering::Relaxed);
+            shared.position_ms.store(0, Ordering::Relaxed);
+            let _ = reply.send(Ok(()));
+        }
+        Command::Seek(position_ms, reply) => {
+            let result = sink
+                .try_seek(Duration::from_millis(position_ms))
+                .map_err(|error| AppError::msg(format!("seek: {error}")));
+            let _ = reply.send(result);
+        }
+        Command::SetVolume(volume, reply) => {
+            sink.set_volume(volume.clamp(0.0, 1.5) as f32);
+            let _ = reply.send(Ok(()));
+        }
+        Command::Append(path, reply) => {
+            let _ = reply.send(load_into(sink, shared, &path, false));
+        }
+    }
+}
+
+fn load_into(sink: &Sink, shared: &Shared, path: &Path, replace: bool) -> AppResult<()> {
+    let decoder = decoder_for(path)?;
+    let duration = decoder
+        .total_duration()
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0);
+    if replace {
+        sink.clear();
+        sink.pause();
+        shared.duration_ms.store(duration, Ordering::Relaxed);
+        shared.position_ms.store(0, Ordering::Relaxed);
+    }
+    sink.append(decoder);
+    Ok(())
+}
+
+fn decoder_for(path: &Path) -> AppResult<Decoder<BufReader<File>>> {
+    // Symphonia can panic on some MP4/AAC files instead of returning Err.
+    let file = File::open(path)?;
+    let opened =
+        catch_unwind(AssertUnwindSafe(|| Decoder::new(BufReader::new(file)))).map_err(|_| {
+            AppError::msg(format!(
+                "cannot decode {}",
+                path.file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.display().to_string())
+            ))
+        })?;
+    opened.map_err(|error| {
+        AppError::msg(format!(
+            "cannot decode {}: {error}",
+            path.file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.display().to_string())
+        ))
+    })
+}
+
+fn publish(sink: &Sink, shared: &Shared) {
+    shared
+        .position_ms
+        .store(sink.get_pos().as_millis() as u64, Ordering::Relaxed);
+    shared.queued.store(sink.len(), Ordering::Relaxed);
+    shared.empty.store(sink.empty(), Ordering::Relaxed);
+    shared
+        .playing
+        .store(!sink.is_paused() && !sink.empty(), Ordering::Relaxed);
+}
+
+fn reply_err(command: Command, error: AppError) {
+    match command {
+        Command::SetUri(_, reply)
+        | Command::Play(reply)
+        | Command::Pause(reply)
+        | Command::Stop(reply)
+        | Command::Seek(_, reply)
+        | Command::SetVolume(_, reply)
+        | Command::Append(_, reply) => {
+            let _ = reply.send(Err(error));
+        }
+    }
+}

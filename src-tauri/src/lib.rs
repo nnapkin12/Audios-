@@ -1,0 +1,89 @@
+mod commands;
+mod error;
+mod library;
+mod persist;
+mod player;
+mod playlists;
+mod search;
+mod tags;
+
+use persist::Store;
+use player::Player;
+use tauri::Manager;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let persist = Store::load();
+            app.manage(persist.clone());
+            app.manage(Player::new(app.handle().clone(), persist));
+            apply_window_icon(app);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::player_state,
+            commands::open_path,
+            commands::play,
+            commands::pause,
+            commands::toggle,
+            commands::stop,
+            commands::next_track,
+            commands::previous_track,
+            commands::seek,
+            commands::play_index,
+            commands::play_path,
+            commands::play_queue_paths,
+            commands::play_tracks,
+            commands::play_playlist,
+            commands::scan_tracks,
+            commands::scan_playlist,
+            commands::list_library_roots,
+            commands::add_library_root,
+            commands::remove_library_root,
+            commands::set_volume,
+            commands::set_muted,
+            commands::set_repeat,
+            commands::set_shuffle,
+            commands::set_replaygain,
+            commands::set_gapless,
+            commands::read_tags,
+            commands::write_tags,
+            commands::batch_write,
+            commands::list_audio_paths,
+            commands::add_picture,
+            commands::remove_picture,
+            commands::export_picture,
+            commands::add_custom_field,
+            commands::remove_custom_field,
+            commands::cover_art,
+            commands::cover_thumb,
+            commands::list_playlists,
+            commands::create_playlist,
+            commands::rename_playlist,
+            commands::delete_playlist,
+            commands::add_to_playlist,
+            commands::remove_from_playlist,
+            commands::get_appearance,
+            commands::set_appearance,
+            commands::save_custom_theme,
+            commands::delete_custom_theme,
+            commands::search_stream,
+            commands::search_media,
+            commands::play_media,
+            commands::save_media,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Audios!");
+}
+
+fn apply_window_icon(app: &tauri::App) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if let Some(icon) = app.default_window_icon() {
+        let _ = window.set_icon(icon.clone());
+    }
+}

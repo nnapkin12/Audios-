@@ -1,0 +1,8 @@
+export const GITHUB_URL = "https://github.com/nnapkin12";
+
+export const SVG_REPO_MARKS = [
+  { name: "Music note", href: "https://www.svgrepo.com/svg/532711/music-note" },
+  { name: "Pause circle", href: "https://www.svgrepo.com/svg/526076/pause-circle" },
+  { name: "Skip previous", href: "https://www.svgrepo.com/svg/528607/skip-previous" },
+  { name: "Skip next", href: "https://www.svgrepo.com/svg/528605/skip-next" },
+] as const;

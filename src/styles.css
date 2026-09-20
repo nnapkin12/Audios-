@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+[data-theme="custom"],
+[data-theme="dusk"] {
+  --app-frame: 20 20 20;
+  --app: 30 30 30;
+  --app-raised: 37 37 38;
+  --app-bar: 14 14 14;
+  --app-bar-line: 96 96 96;
+  --app-hover: 45 45 45;
+  --app-border: 60 60 60;
+  --app-line: 51 51 51;
+  --app-muted: 154 154 154;
+  --app-text: 236 236 236;
+  --app-subtle: 210 210 210;
+  --app-danger: 201 122 122;
+  --app-play: 239 239 239;
+  --app-play-fg: 30 30 30;
+}
+
+[data-theme="midnight"] {
+  --app-frame: 8 8 10;
+  --app: 16 16 18;
+  --app-raised: 22 22 26;
+  --app-bar: 4 4 6;
+  --app-bar-line: 78 78 88;
+  --app-hover: 32 32 38;
+  --app-border: 52 52 60;
+  --app-line: 40 40 46;
+  --app-muted: 148 148 156;
+  --app-text: 244 244 248;
+  --app-subtle: 214 214 222;
+  --app-danger: 210 120 128;
+  --app-play: 244 244 248;
+  --app-play-fg: 16 16 18;
+}
+
+[data-theme="slate"] {
+  --app-frame: 18 22 26;
+  --app: 28 34 40;
+  --app-raised: 36 44 52;
+  --app-bar: 12 16 20;
+  --app-bar-line: 96 112 128;
+  --app-hover: 46 56 66;
+  --app-border: 68 80 92;
+  --app-line: 56 66 76;
+  --app-muted: 156 168 178;
+  --app-text: 236 242 246;
+  --app-subtle: 210 220 228;
+  --app-danger: 210 130 130;
+  --app-play: 236 242 246;
+  --app-play-fg: 28 34 40;
+}
+
+[data-theme="paper"] {
+  --app-frame: 214 208 196;
+  --app: 244 239 230;
+  --app-raised: 250 246 238;
+  --app-bar: 220 210 192;
+  --app-bar-line: 148 132 110;
+  --app-hover: 232 224 210;
+  --app-border: 198 188 172;
+  --app-line: 210 200 184;
+  --app-muted: 110 102 90;
+  --app-text: 36 32 28;
+  --app-subtle: 64 58 50;
+  --app-danger: 168 72 64;
+  --app-play: 36 32 28;
+  --app-play-fg: 244 239 230;
+}
+
+:root,
+[data-accent="blue"] {
+  --app-accent: 123 158 207;
+  --app-accent-dim: 77 102 136;
+}
+
+[data-accent="amber"] {
+  --app-accent: 214 168 88;
+  --app-accent-dim: 150 112 48;
+}
+
+[data-accent="sage"] {
+  --app-accent: 132 168 126;
+  --app-accent-dim: 78 112 74;
+}
+
+[data-accent="rose"] {
+  --app-accent: 204 126 138;
+  --app-accent-dim: 140 78 88;
+}
+
+[data-accent="violet"] {
+  --app-accent: 164 138 204;
+  --app-accent-dim: 108 86 148;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: rgb(var(--app-frame));
+  color: rgb(var(--app-text));
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  font-weight: 500;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--app-border));
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+input[type="range"] {
+  appearance: none;
+  height: 5px;
+  border-radius: 999px;
+  background: rgb(var(--app-border));
+  outline: none;
+}
+
+.bar-range {
+  background: rgb(var(--app-bar-line));
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: rgb(var(--app-text));
+  border: 0;
+  box-shadow: 0 0 0 3px rgb(var(--app-accent) / 0.22);
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
