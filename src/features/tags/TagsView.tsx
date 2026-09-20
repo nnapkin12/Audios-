@@ -106,7 +106,7 @@ export function TagsView() {
     const data = Array.from(new Uint8Array(await file.arrayBuffer()));
     setBusy(true);
     try {
-      const next = await api.addPicture(doc.path, data, file.type || "image/jpeg", pictureKind);
+      const next = await api.addPicture(doc.path, data, imageMime(file), pictureKind);
       setDoc(next);
     } catch (error) {
       setStatus(errorMessage(error, "Could not add artwork"));
@@ -436,6 +436,16 @@ function FieldCard({
       </div>
     </section>
   );
+}
+
+function imageMime(file: File): string {
+  if (file.type.startsWith("image/")) return file.type;
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".png")) return "image/png";
+  if (name.endsWith(".gif")) return "image/gif";
+  if (name.endsWith(".webp")) return "image/webp";
+  if (name.endsWith(".bmp")) return "image/bmp";
+  return "image/jpeg";
 }
 
 function normalize(doc: TagDoc | null): TagFields {

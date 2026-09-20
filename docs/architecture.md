@@ -50,7 +50,7 @@ Tracks are sorted by folder, then disc, then track number, then path. Nested fol
 
 ## Tag writes
 
-The original file is copied to a sibling temp name, lofty writes the temp, then the temp replaces the original. A failed write deletes the temp and leaves the original untouched. Do not write tags in place. Not every container has the same frames.
+The original file is copied to a sibling temp that **keeps the audio extension** (`.song.audios-tmp.mp3`, not `.song.mp3.audios-tmp`). Lofty’s `read_from_path` decides the format from the extension; a `.audios-tmp` suffix makes it report “no format could be determined”. A failed write deletes the temp and leaves the original untouched. Do not write tags in place. Not every container has the same frames. Artwork is sniffed from magic bytes and kept as JPEG/PNG (or converted to JPEG) so a packed WebKit `File.type` of `""` does not label a PNG as JPEG.
 
 ## Search (two steps)
 

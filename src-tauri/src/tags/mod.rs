@@ -4,9 +4,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use base64::Engine as _;
-use lofty::config::WriteOptions;
+use lofty::config::{ParseOptions, ParsingMode, WriteOptions};
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::*;
+use lofty::probe::Probe;
 use lofty::tag::{ItemKey, ItemValue, Tag, TagItem};
 use serde::{Deserialize, Serialize};
 
@@ -140,7 +141,7 @@ pub fn read_tags(path: &str) -> AppResult<TagDoc> {
     if !path.is_file() {
         return Err(AppError::msg("pick an audio file to edit"));
     }
-    let tagged = lofty::read_from_path(&path)?;
+    let tagged = read_audio(&path)?;
     let properties = tagged.properties();
     let tag = tagged.primary_tag().or_else(|| tagged.first_tag());
     let tag_type = tagged
@@ -204,16 +205,9 @@ pub fn list_audio_paths(path: &str) -> AppResult<Vec<String>> {
 }
 
 pub fn add_picture(path: &str, data: Vec<u8>, mime: String, kind: String) -> AppResult<TagDoc> {
-    if data.is_empty() {
-        return Err(AppError::msg("picture data was empty"));
-    }
+    let picture = picture_from_bytes(Path::new(path), &data, &mime, &kind)?;
     mutate_tag(Path::new(path), |tag| {
-        tag.push_picture(Picture::new_unchecked(
-            picture_type_from(&kind),
-            Some(mime_from(&mime)),
-            None,
-            data,
-        ));
+        tag.push_picture(picture);
     })?;
     read_tags(path)
 }
@@ -270,7 +264,7 @@ pub fn cover_for(path: &str) -> AppResult<Option<CoverArt>> {
     if !is_audio_path(Path::new(path)) {
         return Ok(None);
     }
-    let tagged = lofty::read_from_path(path)?;
+    let tagged = read_audio(Path::new(path))?;
     let tag = match tagged.primary_tag().or_else(|| tagged.first_tag()) {
         Some(tag) => tag,
         None => return Ok(None),
@@ -335,6 +329,29 @@ fn shrink_cover(cover: &CoverArt) -> Option<CoverArt> {
     })
 }
 
+pub fn staging_path(path: &Path) -> PathBuf {
+    let name = path
+        .file_stem()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "track".into());
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .filter(|ext| !ext.is_empty())
+        .unwrap_or("tmp");
+    path.with_file_name(format!(".{name}.audios-tmp.{ext}"))
+}
+
+fn read_audio(path: &Path) -> AppResult<lofty::file::TaggedFile> {
+    // BestAttempt still fails the whole file on a bad ID3 TDRC/TYER. Relaxed
+    // drops that one frame so the rest of the tag can load.
+    Ok(Probe::open(path)?
+        .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
+        .guess_file_type()?
+        .read()?)
+}
+
 fn mutate_tag<F>(path: &Path, mutate: F) -> AppResult<()>
 where
     F: FnOnce(&mut Tag),
@@ -342,22 +359,13 @@ where
     if !path.is_file() {
         return Err(AppError::msg("that path is not a file"));
     }
-    let ext = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("tmp");
-    let tmp = path.with_file_name(format!(
-        ".{}.audios-tmp",
-        path.file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_else(|| format!("track.{ext}"))
-    ));
+    let tmp = staging_path(path);
     if tmp.exists() {
         std::fs::remove_file(&tmp)?;
     }
     std::fs::copy(path, &tmp)?;
     let result = (|| -> AppResult<()> {
-        let mut tagged = lofty::read_from_path(&tmp)?;
+        let mut tagged = read_audio(&tmp)?;
         if tagged.primary_tag().is_none() && tagged.first_tag().is_none() {
             tagged.insert_tag(Tag::new(tagged.primary_tag_type()));
         }
@@ -369,7 +377,7 @@ where
             return Err(AppError::msg("could not create a tag for this file"));
         };
         mutate(tag);
-        tag.save_to_path(&tmp, WriteOptions::default())?;
+        tagged.save_to_path(&tmp, WriteOptions::default())?;
         Ok(())
     })();
     match result {
@@ -389,9 +397,17 @@ fn fields_from_tag(tag: &Tag) -> TagFields {
         album_artist: text(tag, &ItemKey::AlbumArtist),
         year: tag
             .year()
-            .map(|year| year.to_string())
-            .or_else(|| text(tag, &ItemKey::Year)),
-        date: text(tag, &ItemKey::RecordingDate),
+            .or_else(|| text(tag, &ItemKey::Year).as_deref().and_then(parse_year))
+            .or_else(|| {
+                text(tag, &ItemKey::RecordingDate)
+                    .as_deref()
+                    .and_then(parse_year)
+            })
+            .map(|year| year.to_string()),
+        date: text(tag, &ItemKey::RecordingDate)
+            .as_deref()
+            .and_then(sanitize_release_date)
+            .filter(|value| value.len() > 4),
         track: tag
             .track()
             .map(|v| v.to_string())
@@ -452,16 +468,22 @@ fn apply_fields(tag: &mut Tag, fields: &TagFields, only: Option<&[String]>) {
     if allow("albumArtist") {
         set_text(tag, ItemKey::AlbumArtist, &fields.album_artist);
     }
-    if allow("year") {
-        set_text(tag, ItemKey::Year, &fields.year);
-        if let Some(year) = fields.year.as_deref().and_then(|value| value.parse().ok()) {
-            tag.set_year(year);
-        } else if fields.year.as_deref() == Some("") {
-            tag.remove_year();
-        }
-    }
-    if allow("date") {
-        set_text(tag, ItemKey::RecordingDate, &fields.date);
+    if allow("year") || allow("date") {
+        apply_release_time(
+            tag,
+            if allow("year") {
+                fields.year.as_deref()
+            } else {
+                None
+            },
+            if allow("date") {
+                fields.date.as_deref()
+            } else {
+                None
+            },
+            allow("year"),
+            allow("date"),
+        );
     }
     if allow("track") {
         set_text(tag, ItemKey::TrackNumber, &fields.track);
@@ -683,6 +705,104 @@ fn set_url(tag: &mut Tag, value: &Option<String>) {
     set_text(tag, ItemKey::AudioSourceUrl, value);
 }
 
+fn apply_release_time(
+    tag: &mut Tag,
+    year: Option<&str>,
+    date: Option<&str>,
+    touch_year: bool,
+    touch_date: bool,
+) {
+    let date = if touch_date {
+        date.and_then(sanitize_release_date)
+    } else {
+        text(tag, &ItemKey::RecordingDate)
+            .as_deref()
+            .and_then(sanitize_release_date)
+    };
+    let year = if touch_year {
+        year.and_then(parse_year)
+    } else {
+        tag.year()
+            .or_else(|| text(tag, &ItemKey::Year).as_deref().and_then(parse_year))
+            .or_else(|| date.as_deref().and_then(parse_year))
+    };
+
+    if touch_year || touch_date {
+        tag.remove_key(&ItemKey::Year);
+        tag.remove_key(&ItemKey::RecordingDate);
+        tag.remove_year();
+    }
+
+    // ID3 TDRC is a timestamp. Year-only ("2024") is valid. Do not call
+    // Tag::set_year — it splices onto any existing RecordingDate leftover.
+    if let Some(date) = date {
+        let _ = tag.insert_text(ItemKey::RecordingDate, date);
+        return;
+    }
+    if let Some(year) = year {
+        let value = year.to_string();
+        let _ = tag.insert_text(ItemKey::Year, value.clone());
+        let _ = tag.insert_text(ItemKey::RecordingDate, value);
+    }
+}
+
+pub fn parse_year(value: &str) -> Option<u32> {
+    let digits: String = value
+        .chars()
+        .filter(|ch| ch.is_ascii_digit())
+        .take(4)
+        .collect();
+    if digits.len() != 4 {
+        return None;
+    }
+    let year: u32 = digits.parse().ok()?;
+    (1000..=9999).contains(&year).then_some(year)
+}
+
+pub fn sanitize_release_date(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let normalized = trimmed.replace('/', "-").replace('.', "-");
+    let date = normalized
+        .split([' ', 'T'])
+        .next()
+        .unwrap_or(&normalized)
+        .trim();
+    if let Some(year) = parse_year(date) {
+        if date.len() == 4 {
+            return Some(year.to_string());
+        }
+    }
+    let parts: Vec<&str> = date.split('-').filter(|part| !part.is_empty()).collect();
+    if parts.is_empty()
+        || parts
+            .iter()
+            .any(|part| !part.chars().all(|ch| ch.is_ascii_digit()))
+    {
+        return parse_year(trimmed).map(|year| year.to_string());
+    }
+    match parts.as_slice() {
+        [year] => parse_year(year).map(|year| year.to_string()),
+        [year, month] if month.len() <= 2 => {
+            let year = parse_year(year)?;
+            let month: u32 = month.parse().ok()?;
+            (1..=12)
+                .contains(&month)
+                .then_some(format!("{year:04}-{month:02}"))
+        }
+        [year, month, day, ..] if month.len() <= 2 && day.len() <= 2 => {
+            let year = parse_year(year)?;
+            let month: u32 = month.parse().ok()?;
+            let day: u32 = day.parse().ok()?;
+            ((1..=12).contains(&month) && (1..=31).contains(&day))
+                .then_some(format!("{year:04}-{month:02}-{day:02}"))
+        }
+        _ => parse_year(trimmed).map(|year| year.to_string()),
+    }
+}
+
 fn set_text(tag: &mut Tag, key: ItemKey, value: &Option<String>) {
     let Some(value) = value else {
         return;
@@ -741,14 +861,83 @@ fn picture_type_from(kind: &str) -> PictureType {
 }
 
 fn mime_from(mime: &str) -> MimeType {
-    match mime.to_ascii_lowercase().as_str() {
-        "image/jpeg" | "image/jpg" => MimeType::Jpeg,
-        "image/png" => MimeType::Png,
-        "image/gif" => MimeType::Gif,
-        "image/bmp" => MimeType::Bmp,
-        "image/tiff" => MimeType::Tiff,
-        other => MimeType::Unknown(other.to_string()),
+    MimeType::from_str(mime)
+}
+
+fn picture_from_bytes(path: &Path, data: &[u8], mime_hint: &str, kind: &str) -> AppResult<Picture> {
+    if data.is_empty() {
+        return Err(AppError::msg("picture data was empty"));
     }
+    let (bytes, mime) = normalize_picture(path, data, mime_hint)?;
+    Ok(Picture::new_unchecked(
+        picture_type_from(kind),
+        Some(mime),
+        None,
+        bytes,
+    ))
+}
+
+fn normalize_picture(path: &Path, data: &[u8], mime_hint: &str) -> AppResult<(Vec<u8>, MimeType)> {
+    let sniffed = sniff_image_mime(data).or_else(|| {
+        let hint = mime_hint.trim().to_ascii_lowercase();
+        hint.starts_with("image/").then(|| mime_from(&hint))
+    });
+    if wants_jpeg_cover(path) {
+        if matches!(sniffed, Some(MimeType::Jpeg)) {
+            return Ok((data.to_vec(), MimeType::Jpeg));
+        }
+        return encode_jpeg(data);
+    }
+    match sniffed {
+        Some(mime @ (MimeType::Jpeg | MimeType::Png)) => Ok((data.to_vec(), mime)),
+        _ => encode_jpeg(data),
+    }
+}
+
+fn wants_jpeg_cover(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+            .as_str(),
+        "m4a" | "m4b" | "mp4" | "aac"
+    )
+}
+
+pub fn sniff_image_mime(data: &[u8]) -> Option<MimeType> {
+    if data.len() >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+        return Some(MimeType::Jpeg);
+    }
+    if data.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Some(MimeType::Png);
+    }
+    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        return Some(MimeType::Gif);
+    }
+    if data.starts_with(b"BM") {
+        return Some(MimeType::Bmp);
+    }
+    if data.len() >= 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WEBP" {
+        return Some(MimeType::Unknown("image/webp".into()));
+    }
+    None
+}
+
+fn encode_jpeg(data: &[u8]) -> AppResult<(Vec<u8>, MimeType)> {
+    let image = image::load_from_memory(data)
+        .map_err(|_| AppError::msg("that image could not be read"))?
+        .to_rgb8();
+    let mut out = Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90)
+        .encode(
+            image.as_raw(),
+            image.width(),
+            image.height(),
+            image::ExtendedColorType::Rgb8,
+        )
+        .map_err(|_| AppError::msg("could not convert that image for the tag"))?;
+    Ok((out.into_inner(), MimeType::Jpeg))
 }
 
 #[cfg(test)]
@@ -759,5 +948,53 @@ mod tests {
     fn picture_round_trip_kinds() {
         assert_eq!(picture_kind(picture_type_from("front")), "front");
         assert_eq!(picture_kind(picture_type_from("leaflet")), "leaflet");
+    }
+
+    #[test]
+    fn staging_path_keeps_audio_extension() {
+        let path = Path::new("/music/Album/01 song.mp3");
+        let staged = staging_path(path);
+        assert_eq!(
+            staged.file_name().and_then(|name| name.to_str()),
+            Some(".01 song.audios-tmp.mp3")
+        );
+        assert_eq!(staged.extension().and_then(|ext| ext.to_str()), Some("mp3"));
+        assert!(lofty::file::FileType::from_path(&staged).is_some());
+        assert!(
+            lofty::file::FileType::from_path(Path::new("/music/.01 song.mp3.audios-tmp")).is_none()
+        );
+    }
+
+    #[test]
+    fn year_only_is_a_valid_release_time() {
+        assert_eq!(parse_year("2024"), Some(2024));
+        assert_eq!(parse_year(" 2024 "), Some(2024));
+        assert_eq!(sanitize_release_date(""), None);
+        assert_eq!(sanitize_release_date("2024"), Some("2024".into()));
+        assert_eq!(
+            sanitize_release_date("2024/08/19"),
+            Some("2024-08-19".into())
+        );
+        assert_eq!(sanitize_release_date("2024-08"), Some("2024-08".into()));
+        assert_eq!(sanitize_release_date("August 2024"), Some("2024".into()));
+        assert_eq!(sanitize_release_date("n.d."), None);
+
+        let mut tag = Tag::new(lofty::tag::TagType::Id3v2);
+        apply_release_time(&mut tag, Some("2024"), Some(""), true, true);
+        assert_eq!(tag.get_string(&ItemKey::RecordingDate), Some("2024"));
+        apply_release_time(&mut tag, Some("2024"), Some("2024/08/19"), true, true);
+        assert_eq!(tag.get_string(&ItemKey::RecordingDate), Some("2024-08-19"));
+    }
+
+    #[test]
+    fn sniff_jpeg_and_png_magic() {
+        assert_eq!(
+            sniff_image_mime(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some(MimeType::Jpeg)
+        );
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        png.extend_from_slice(&[0, 0, 0, 0]);
+        assert_eq!(sniff_image_mime(&png), Some(MimeType::Png));
+        assert_eq!(sniff_image_mime(b"not-an-image"), None);
     }
 }
