@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/audios.png" alt="Audios!" width="360">
+  <img src="https://github.com/nnapkin12/Audios-/blob/main/public/audios.png" alt="Audios!" width="360">
 </p>
 
 # Credits
