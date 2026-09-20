@@ -12,7 +12,6 @@
 <p align="center">
   <a href="docs/features.md">Features</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
-  <a href="docs/releasing.md">Releasing</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="CREDITS.md">Credits</a> ·
   <a href="LICENSE">MIT</a>
