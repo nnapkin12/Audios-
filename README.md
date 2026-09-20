@@ -28,10 +28,10 @@ It is **not** a Spotify client. Search talks to YouTube through [yt-dlp](https:/
 
 ## Features
 
-- **Player** — open files or nested album folders. Queue, next / previous, repeat, shuffle, gapless, ReplayGain, resume where you left off.
-- **Search** — type a song name and artist, play it from a temp file, auto deletes that file when you change tracks, or save a copy if you want to keep it.
+- **Music file Player** — open files or nested album folders. Queue, next / previous, repeat, shuffle, gapless, ReplayGain, resume where you left off.
+- **Search Music** — type a song name and artist, play it from a temp file, auto deletes that file when you change tracks, or save a copy if you want to keep it.
 - **Tags** — metadata. title, artists, album, lyrics, ReplayGain, MusicBrainz IDs, custom fields, artwork, and batch apply across a folder.
-- **Themes** — Dusk, Midnight, Slate, Paper, plus a theme builder for your own colors.
+- **UI/Themes** — Dusk, Midnight, Slate, Paper, plus a theme builder for your own colors.
 
 A longer list lives in [docs/features.md](docs/features.md).
 
@@ -82,13 +82,13 @@ yt-dlp --version
 npm run tauri build
 ```
 
-That writes an **AppImage** (one file you can run) and a **.deb** (for Ubuntu / Pop / Debian) under `src-tauri/target/release/bundle/`.
+That writes an **AppImage** and a **.deb** under `src-tauri/target/release/bundle/`.
 
-`npm run tauri dev` is a normal process with your usual PATH. The AppImage is a squashfs with its own `PYTHONHOME` / `LD_LIBRARY_PATH` / GTK paths. After any Search or packaging change, open the **new** AppImage and play one search result before uploading it.
+`npm run tauri dev` is a normal process with your usual PATH.
 
 ## Releases
 
-GitHub Release assets are those two installer files only. Do not upload AppDir folders. Search still needs a **host** yt-dlp, ffmpeg, and curl; they are not inside the package.
+GitHub Release assets are those two installer files only. Search still needs a **host** yt-dlp, ffmpeg, and curl; they are not inside the package.
 
 ## License
 

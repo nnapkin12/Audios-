@@ -4,7 +4,7 @@
 
 # Audios! full Features list
 
-## Player
+## Music files Player
 
 - Open a file, a folder, or nested album folders.
 - Library roots persist across restarts.
@@ -18,18 +18,19 @@
 - Cover art from embedded pictures.
 - Frameless title bar with drag, minimize, maximize, close.
 
-## Search
+## Music Search (and save)
 
 - `yt-dlp` `ytsearch` lists titles and watch URLs (no audio yet).
 - Play downloads a temp file, remuxes it so rodio can decode it, then plays it.
 - Temp files are deleted when the user starts a different search track.
 - Download keeps a copy via the system save dialog.
 - Accepts a search string or a YouTube URL.
-- Needs a current yt-dlp (not the 2024 apt package), ffmpeg, and curl.
+- Needs a current yt-dlp (apt package is sometimes old), ffmpeg, and curl.
+- best results ive gotten is when typing an artist name and song name together: '|artist| |song name|' or vise versa.
 
 Search is YouTube-backed. It does not log into Spotify and cannot pull Spotify-hosted audio.
 
-## Tags
+## Metadata & Tags
 
 - Read and write the fields [lofty](https://docs.rs/lofty) understands for that container.
 - Artwork add / remove / export.
@@ -37,7 +38,7 @@ Search is YouTube-backed. It does not log into Spotify and cannot pull Spotify-h
 - Batch apply across a folder of files.
 - Writes go through a temp file, then replace the original.
 
-## Appearance
+## Theme & Appearance
 
 - Built-in themes: Dusk, Midnight, Slate, Paper.
 - Accents: Blue, Amber, Sage, Rose, Violet.
