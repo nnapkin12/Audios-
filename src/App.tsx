@@ -86,38 +86,36 @@ export default function App() {
   }, [applySnapshot, applyTick, setAppearance, setLibraryRoots, setNowPlayingOpen, setPlaylists, setStatus]);
 
   return (
-    <div className="h-full bg-app-frame p-[7px]">
-      <div className="relative flex h-full flex-col overflow-hidden rounded-[10px] border border-app-border bg-app shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-        <Titlebar />
-        <div className="relative flex min-h-0 flex-1">
-          <Sidebar />
-          <main className="flex min-w-0 flex-1 flex-col">
-            <div className={tab === "player" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
-              <PlayerView />
-            </div>
-            <div className={tab === "search" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
-              <SearchView />
-            </div>
-            <div className={tab === "tags" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
-              <TagsView />
-            </div>
-            <div className={tab === "settings" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
-              <SettingsView />
-            </div>
-            {status ? (
-              <p
-                className={`shrink-0 border-t border-app-line px-4 py-1.5 text-[13px] font-semibold ${
-                  statusTone === "info" ? "text-app-muted" : "text-app-danger"
-                }`}
-              >
-                {status}
-              </p>
-            ) : null}
-          </main>
-          {nowPlayingOpen ? <NowPlayingFull /> : null}
-        </div>
-        {nowPlayingOpen ? null : <NowPlayingBar />}
+    <div className="flex h-full flex-col overflow-hidden bg-app">
+      <Titlebar />
+      <div className="relative flex min-h-0 flex-1">
+        <Sidebar />
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className={tab === "player" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+            <PlayerView />
+          </div>
+          <div className={tab === "search" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+            <SearchView />
+          </div>
+          <div className={tab === "tags" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+            <TagsView />
+          </div>
+          <div className={tab === "settings" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+            <SettingsView />
+          </div>
+          {status ? (
+            <p
+              className={`shrink-0 border-t border-app-line px-4 py-1.5 text-[13px] font-semibold ${
+                statusTone === "info" ? "text-app-muted" : "text-app-danger"
+              }`}
+            >
+              {status}
+            </p>
+          ) : null}
+        </main>
+        {nowPlayingOpen ? <NowPlayingFull /> : null}
       </div>
+      {nowPlayingOpen ? null : <NowPlayingBar />}
     </div>
   );
 }

@@ -33,14 +33,15 @@ All disk, audio, process, and tag work lives in Rust. The webview renders state 
 - [`src-tauri/src/player/`](../src-tauri/src/player/) — `PlayerEngine` (rodio + Symphonia), recursive scan, queue.
 - [`src-tauri/src/search.rs`](../src-tauri/src/search.rs) — ytsearch, cache, remux, optional save.
 - [`src-tauri/src/tags/`](../src-tauri/src/tags/) — read/write/batch/pictures/custom frames.
-- [`src-tauri/src/persist.rs`](../src-tauri/src/persist.rs) — last folder, volume, repeat/shuffle, ReplayGain/gapless, resume positions, themes.
+- [`src-tauri/src/persist.rs`](../src-tauri/src/persist.rs) — last folder, volume, repeat/shuffle, ReplayGain/gapless, themes, playlist names and items. Old `positions` keys in `state.json` are ignored and dropped when you leave that track.
+- [`src-tauri/src/playlists.rs`](../src-tauri/src/playlists.rs) — create / rename / delete, add paths. Custom pictures are `playlist-covers/{id}.jpg`. If that file is missing, a 2×2 mosaic of embedded track pictures is cached as `{id}.auto.jpg`. The picker sends a filesystem path; Rust reads the image. Do not send picture bytes through IPC.
 - [`src-tauri/src/commands/mod.rs`](../src-tauri/src/commands/mod.rs) — IPC only.
 
-Config is under the `directories` crate path for qualifier `com`, org `audios`, app `Audios` (typically `~/.config/audios/Audios/state.json`). Search temps are `~/.cache/audios/search/`. The Tauri bundle identifier is `com.audios.desktop` — those names do not match, and changing either one moves user data.
+Config is under the `directories` crate path for qualifier `com`, org `audios`, app `Audios` (typically `~/.config/audios/Audios/state.json`). Playlist pictures live next to that file in `playlist-covers/`. Search temps are `~/.cache/audios/search/`. The Tauri bundle identifier is `com.audios.desktop` — those names do not match, and changing either one moves user data.
 
 ## Playback
 
-Rodio keeps the output stream alive and queues Symphonia decoders. Gapless appends the next file about 1.5s before the current one ends. ReplayGain is a volume multiplier from track/album tags. Resume positions drop once a file is within three seconds of the end.
+Rodio keeps the output stream alive and queues Symphonia decoders. Gapless appends the next file about 1.5s before the current one ends. ReplayGain is a volume multiplier from track/album tags. Switching tracks forgets the previous file’s saved place so the next play starts at 0:00. Pause does not write a resume offset.
 
 Release builds use `panic = "unwind"` so `catch_unwind` around the decoder can turn a Symphonia panic into an error instead of killing the AppImage.
 
@@ -76,7 +77,7 @@ Search runtime dependencies: a **current** yt-dlp, `ffmpeg`, and `curl`. Spotify
 
 ## UI notes
 
-- The window is frameless. Keep the inset frame so Linux compositors that draw a square outer chrome still look finished.
+- The window is frameless. Window buttons are custom (minimize / maximize / close) on the top right. The UI fills the client area; `html`/`body` use `--app` so compositor square chrome matches the page. Do not add inset frame padding around the app.
 - Stay on WebKit-safe CSS.
 - The footer status line is red for errors and muted for info (`Saved tags`, `Getting audio…`, Vite preview).
 - Player / Search / Tags / Settings stay mounted and toggle with `hidden` so tab state survives.
@@ -91,7 +92,6 @@ Search runtime dependencies: a **current** yt-dlp, `ffmpeg`, and `curl`. Spotify
 
 - **YouTube extractor drift.** mediaconnect, format IDs, and public frontends will rot. Fix the extractor args or host list; do not add a stricter `-f bestaudio[ext=m4a]` selector.
 - **Library m4a.** Scan treats `.m4a` as playable. Some files will fail the same Symphonia seek panic. Remux is only on the search cache path today.
-- **Resume map eviction** is not LRU; it drops arbitrary keys after 500 entries.
 - **Search cache** is one file per video id. A failed remux must not leave only an unplayable `.m4a` as the “existing cache” hit — `prepare_for_player` remuxes that path again.
 - Search unit tests are JSON/path only. They do not hit live YouTube and do not require yt-dlp or ffmpeg.
 

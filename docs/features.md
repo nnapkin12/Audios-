@@ -11,22 +11,25 @@
 - Queue with next / previous, repeat (off / one / all), and shuffle.
 - Gapless: the next file is appended to the rodio sink before the current track ends.
 - ReplayGain from track/album tags (can be toggled).
-- Resume position per file; cleared when the track is within three seconds of the end.
+- Leaving a song forgets its place.
 - Folder tree, playlists, and a virtualized track list.
+- Playlists can be renamed after they are saved. A custom picture can be set from a local image file. If none is set, Audios! builds a 2×2 mosaic from up to four embedded track pictures.
+- Folder and playlist views have a search bar that filters the open list.
+- Track rows show a play overlay on the cover when you hover, the current playing track shows pause instead, and clicking it pauses.
 - Now-playing bar plus a full now-playing view (`f` to open, `Esc` to close).
 - Transport keys: Space play/pause, arrows seek ±5s, `n` / `p` next / previous.
 - Cover art from embedded pictures.
-- Frameless title bar with drag, minimize, maximize, close.
+- Frameless title bar with custom minimize / maximize / close on the top right.
 
 ## Music Search (and save)
 
-- `yt-dlp` `ytsearch` lists titles and watch URLs (no audio yet).
+- `yt-dlp` `ytsearch` lists titles and watch URLs (no audio yet). Each result shows the watch URL and can open it in the browser.
 - Play downloads a temp file, remuxes it so rodio can decode it, then plays it.
-- Temp files are deleted when the user starts a different search track.
-- Download keeps a copy via the system save dialog.
+- Temp files are deleted when a different search track starts.
+- Download button on each entry, keeps a copy via the system save dialog.
 - Accepts a search string or a YouTube URL.
-- Needs a current yt-dlp (apt package is sometimes old), ffmpeg, and curl.
-- best results ive gotten is when typing an artist name and song name together: '|artist| |song name|' or vise versa.
+- Needs a current yt-dlp (distro packages are often stale), ffmpeg, and curl.
+- Queries that include both artist and title usually rank better than a title alone.
 
 Search is YouTube-backed. It does not log into Spotify and cannot pull Spotify-hosted audio.
 

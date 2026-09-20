@@ -7,6 +7,7 @@ export function VirtualList<T>({
   className,
   renderRow,
   getKey,
+  onPointerLeave,
 }: {
   items: T[];
   rowHeight: number;
@@ -14,6 +15,7 @@ export function VirtualList<T>({
   className?: string;
   renderRow: (item: T, index: number) => ReactNode;
   getKey: (item: T, index: number) => string;
+  onPointerLeave?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -38,6 +40,7 @@ export function VirtualList<T>({
     <div
       ref={ref}
       className={className}
+      onPointerLeave={onPointerLeave}
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
     >
       <div style={{ height: items.length * rowHeight, position: "relative" }}>

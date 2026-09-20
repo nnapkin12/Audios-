@@ -689,8 +689,8 @@ fn hit_from_value(value: &Value) -> Option<MediaHit> {
     let url = locator_from_value(value)?;
     Some(MediaHit {
         title: title.to_string(),
-        url,
-        page_url: None,
+        url: url.clone(),
+        page_url: Some(url),
     })
 }
 
@@ -1110,7 +1110,7 @@ mod tests {
             vec![MediaHit {
                 title: "Example Song".into(),
                 url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".into(),
-                page_url: None,
+                page_url: Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ".into()),
             }]
         );
     }
@@ -1132,12 +1132,12 @@ mod tests {
                 MediaHit {
                     title: "One".into(),
                     url: "https://www.youtube.com/watch?v=aaaaaaaaaaa".into(),
-                    page_url: None,
+                    page_url: Some("https://www.youtube.com/watch?v=aaaaaaaaaaa".into()),
                 },
                 MediaHit {
                     title: "Two".into(),
                     url: "https://www.youtube.com/watch?v=bbbbbbbbbbb".into(),
-                    page_url: None,
+                    page_url: Some("https://www.youtube.com/watch?v=bbbbbbbbbbb".into()),
                 },
             ]
         );
@@ -1276,9 +1276,7 @@ mod tests {
             "/tmp/.mount_Audiosxyz/usr/bin/yt-dlp"
         )));
         assert!(!is_bundled_path(Path::new("/usr/bin/yt-dlp")));
-        assert!(!is_bundled_path(Path::new(
-            "/home/napkin/.local/bin/yt-dlp"
-        )));
+        assert!(!is_bundled_path(Path::new("/home/user/.local/bin/yt-dlp")));
     }
 
     #[test]
@@ -1303,7 +1301,7 @@ mod tests {
             "SSL_CERT_FILE",
             "/tmp/.mount_x/usr/lib/ssl/cert.pem"
         ));
-        assert!(!should_strip_child_env("HOME", "/home/napkin"));
+        assert!(!should_strip_child_env("HOME", "/home/user"));
         assert!(!should_strip_child_env("DISPLAY", ":0"));
         assert!(!should_strip_child_env("LANG", "en_US.UTF-8"));
         assert!(!should_strip_child_env(

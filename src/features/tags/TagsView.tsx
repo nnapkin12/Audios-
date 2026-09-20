@@ -122,10 +122,10 @@ export function TagsView() {
           <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">Files</h2>
           <div className="flex gap-1">
             <button type="button" onClick={() => void openFile()} className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover">
-              File
+              Open file
             </button>
             <button type="button" onClick={() => void openFolder()} className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover">
-              Folder
+              Open folder
             </button>
           </div>
         </div>

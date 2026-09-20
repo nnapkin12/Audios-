@@ -1,8 +1,19 @@
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/format";
 import { cacheKey, dropCachedTracks, getCachedTracks, setCachedTracks } from "@/lib/browseCache";
-import type { BrowsePage } from "@/lib/types";
+import type { BrowsePage, Track } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
+
+export function filterTracks(tracks: Track[], query: string): Track[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return tracks;
+  return tracks.filter((track) => {
+    const hay = [track.title, track.artist, track.albumArtist, track.album, track.path]
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(needle);
+  });
+}
 
 export function samePage(left: BrowsePage, right: BrowsePage): boolean {
   if (left.kind !== right.kind) return false;

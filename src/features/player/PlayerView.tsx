@@ -1,11 +1,19 @@
-import { useState, type MouseEvent } from "react";
-import { Play, Plus } from "lucide-react";
-import { invalidateBrowse, openBrowsePage } from "@/features/player/browse";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { Pencil, Play, Search, X } from "lucide-react";
+import { filterTracks, invalidateBrowse, openBrowsePage } from "@/features/player/browse";
 import { LibraryHome } from "@/features/player/LibraryHome";
 import { LibraryNav } from "@/features/player/Playlists";
 import { TrackList } from "@/features/player/TrackList";
 import { ContextMenu, type MenuEntry } from "@/features/shell/ContextMenu";
-import { api, pickAudioFile, pickAudioFiles, pickFolder, revealInFiles } from "@/lib/api";
+import {
+  api,
+  pickAudioFile,
+  pickAudioFiles,
+  pickFolder,
+  pickImageFile,
+  revealInFiles,
+} from "@/lib/api";
+import { PlaylistCover, dropPlaylistCover } from "@/lib/covers";
 import { baseName, errorMessage } from "@/lib/format";
 import type { Track } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
@@ -19,10 +27,27 @@ export function PlayerView() {
   const setLibraryRoots = useAppStore((state) => state.setLibraryRoots);
   const setPlaylists = useAppStore((state) => state.setPlaylists);
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
+  const [listQuery, setListQuery] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null);
 
   const playlist =
     browse.kind === "playlist" ? playlists.find((item) => item.id === browse.id) : null;
+
+  const browseKey =
+    browse.kind === "folder" ? browse.path : browse.kind === "playlist" ? browse.id : "home";
+
+  useEffect(() => {
+    setListQuery("");
+    setRenaming(false);
+    setDraftName(playlist?.name ?? "");
+  }, [browseKey, playlist?.name]);
+
+  const visibleTracks = useMemo(
+    () => filterTracks(pageTracks, listQuery),
+    [pageTracks, listQuery],
+  );
 
   async function openFile() {
     try {
@@ -47,11 +72,49 @@ export function PlayerView() {
   }
 
   async function playTracks(startPath?: string) {
-    if (pageTracks.length === 0) return;
+    if (visibleTracks.length === 0) return;
     try {
-      useAppStore.getState().applySnapshot(await api.playTracks(pageTracks, startPath));
+      useAppStore.getState().applySnapshot(await api.playTracks(visibleTracks, startPath));
     } catch (error) {
       setStatus(errorMessage(error, "Could not play"));
+    }
+  }
+
+  async function commitRename() {
+    if (!playlist) return;
+    const next = draftName.trim();
+    if (!next || next === playlist.name) {
+      setDraftName(playlist.name);
+      setRenaming(false);
+      return;
+    }
+    try {
+      setPlaylists(await api.renamePlaylist(playlist.id, next));
+      setRenaming(false);
+    } catch (error) {
+      setStatus(errorMessage(error, "Could not rename playlist"));
+    }
+  }
+
+  async function changeCover() {
+    if (!playlist) return;
+    const path = await pickImageFile();
+    if (!path) return;
+    try {
+      dropPlaylistCover(playlist.id);
+      setPlaylists(await api.setPlaylistCover(playlist.id, path));
+    } catch (error) {
+      setStatus(errorMessage(error, "Could not set playlist picture"));
+    }
+  }
+
+  async function removeCover() {
+    if (!playlist) return;
+    try {
+      dropPlaylistCover(playlist.id);
+      setPlaylists(await api.clearPlaylistCover(playlist.id));
+    } catch (error) {
+      setStatus(errorMessage(error, "Could not remove playlist picture"));
     }
   }
 
@@ -118,6 +181,7 @@ export function PlayerView() {
                 danger: true,
                 onClick: () => {
                   void api.removeFromPlaylist(playlist!.id, source.path).then((list) => {
+                    dropPlaylistCover(playlist!.id);
                     setPlaylists(list);
                     invalidateBrowse("playlist", playlist!.id);
                     void openBrowsePage({ kind: "playlist", id: playlist!.id }, true);
@@ -137,41 +201,42 @@ export function PlayerView() {
         ? baseName(browse.path)
         : (playlist?.name ?? "Playlist");
 
+  const filtered = listQuery.trim().length > 0;
+  const countLabel = pageLoading
+    ? "Reading library…"
+    : pageTracks.length === 0
+      ? "No tracks"
+      : filtered
+        ? `${visibleTracks.length} of ${pageTracks.length} track${pageTracks.length === 1 ? "" : "s"}`
+        : `${pageTracks.length} track${pageTracks.length === 1 ? "" : "s"}`;
+
   return (
     <section className="flex min-h-0 flex-1">
       <div className="flex w-[300px] shrink-0 flex-col border-r border-app-line">
         <div className="flex items-center justify-between px-3 py-2.5">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => void openBrowsePage({ kind: "home" })}
-              className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted hover:text-app-text"
-            >
-              Library
-            </button>
-            <button
-              type="button"
-              title="New playlist"
-              onClick={() => setCreatingPlaylist(true)}
-              className="rounded-md p-1 text-app-subtle hover:bg-app-hover"
-            >
-              <Plus size={16} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void openBrowsePage({ kind: "home" })}
+            className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted hover:text-app-text"
+          >
+            Library
+          </button>
           <div className="flex gap-1">
             <button
               type="button"
+              title="Open one audio file"
               onClick={() => void openFile()}
               className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
             >
-              File
+              Add file
             </button>
             <button
               type="button"
+              title="Add a folder to the library"
               onClick={() => void addFolder()}
               className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
             >
-              Folder
+              Add folder
             </button>
           </div>
         </div>
@@ -190,18 +255,81 @@ export function PlayerView() {
         ) : (
           <>
             <div className="flex items-end justify-between gap-4 px-5 py-4">
-              <div className="min-w-0">
-                <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
-                  {browse.kind === "folder" ? "Folder" : "Playlist"}
-                </p>
-                <p className="truncate text-[22px] font-semibold text-app-text">{title}</p>
-                <p className="text-[14px] font-medium text-app-muted">
-                  {pageLoading
-                    ? "Reading library…"
-                    : pageTracks.length === 0
-                      ? "No tracks"
-                      : `${pageTracks.length} track${pageTracks.length === 1 ? "" : "s"}`}
-                </p>
+              <div className="flex min-w-0 items-end gap-4">
+                {browse.kind === "playlist" && playlist ? (
+                  <button
+                    type="button"
+                    title={playlist.hasCover ? "Change picture" : "Add picture"}
+                    onClick={() => void changeCover()}
+                    onContextMenu={(event) =>
+                      openMenu(event, [
+                        {
+                          kind: "action",
+                          action: { label: "Change picture", onClick: () => void changeCover() },
+                        },
+                        ...(playlist.hasCover
+                          ? ([
+                              {
+                                kind: "action",
+                                action: {
+                                  label: "Remove picture",
+                                  onClick: () => void removeCover(),
+                                },
+                              },
+                            ] satisfies MenuEntry[])
+                          : []),
+                      ])
+                    }
+                    className="group relative shrink-0"
+                  >
+                    <PlaylistCover
+                      id={playlist.id}
+                      className="h-[88px] w-[88px] rounded-xl"
+                    />
+                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 text-[12px] font-semibold text-white opacity-0 group-hover:opacity-100">
+                      {playlist.hasCover ? "Change" : "Add picture"}
+                    </span>
+                  </button>
+                ) : null}
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
+                    {browse.kind === "folder" ? "Folder" : "Playlist"}
+                  </p>
+                  {browse.kind === "playlist" && playlist && renaming ? (
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void commitRename();
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        value={draftName}
+                        onChange={(event) => setDraftName(event.target.value)}
+                        onBlur={() => void commitRename()}
+                        className="mt-0.5 w-full max-w-md rounded-md border border-app-border bg-app px-2 py-1 text-[22px] font-semibold text-app-text"
+                      />
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-[22px] font-semibold text-app-text">{title}</p>
+                      {browse.kind === "playlist" && playlist ? (
+                        <button
+                          type="button"
+                          title="Rename playlist"
+                          onClick={() => {
+                            setDraftName(playlist.name);
+                            setRenaming(true);
+                          }}
+                          className="rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+                  <p className="text-[14px] font-medium text-app-muted">{countLabel}</p>
+                </div>
               </div>
               <div className="flex shrink-0 gap-2">
                 {browse.kind === "playlist" && playlist ? (
@@ -224,7 +352,7 @@ export function PlayerView() {
                 ) : null}
                 <button
                   type="button"
-                  disabled={pageTracks.length === 0}
+                  disabled={visibleTracks.length === 0}
                   onClick={() => void playTracks()}
                   className="flex items-center gap-1.5 rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg disabled:opacity-40"
                 >
@@ -233,6 +361,9 @@ export function PlayerView() {
                 </button>
               </div>
             </div>
+            {pageTracks.length > 0 || listQuery ? (
+              <ListSearch value={listQuery} onChange={setListQuery} />
+            ) : null}
             {browse.kind === "playlist" && playlist && playlist.items.length > 0 ? (
               <PlaylistSources playlistId={playlist.id} />
             ) : null}
@@ -244,9 +375,15 @@ export function PlayerView() {
                     : "This folder has no audio files Audios! can play."}
                 </div>
               </div>
+            ) : visibleTracks.length === 0 && filtered ? (
+              <div className="px-5">
+                <div className="rounded-xl border border-dashed border-app-border bg-app-raised/60 px-4 py-6 text-[14px] font-medium leading-6 text-app-muted">
+                  No tracks match that search.
+                </div>
+              </div>
             ) : (
               <TrackList
-                tracks={pageTracks}
+                tracks={visibleTracks}
                 onPlay={(track) => void playTracks(track.path)}
                 onContext={(event, track) => openMenu(event, trackMenu(track))}
               />
@@ -258,6 +395,41 @@ export function PlayerView() {
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
       ) : null}
     </section>
+  );
+}
+
+function ListSearch({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="px-5 pb-3">
+      <label className="relative block">
+        <Search
+          size={16}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-app-muted"
+        />
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Search this list"
+          className="w-full rounded-lg border border-app-border bg-app-raised py-2.5 pl-9 pr-9 text-[15px] text-app-text"
+        />
+        {value ? (
+          <button
+            type="button"
+            title="Clear search"
+            onClick={() => onChange("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text"
+          >
+            <X size={14} />
+          </button>
+        ) : null}
+      </label>
+    </div>
   );
 }
 
@@ -280,6 +452,7 @@ function PlaylistSources({ playlistId }: { playlistId: string }) {
             title="Remove from playlist"
             onClick={() => {
               void api.removeFromPlaylist(playlist.id, item.path).then((list) => {
+                dropPlaylistCover(playlist.id);
                 setPlaylists(list);
                 invalidateBrowse("playlist", playlist.id);
                 void openBrowsePage({ kind: "playlist", id: playlist.id }, true);
@@ -299,6 +472,7 @@ async function pickAudioFilesInto(playlistId: string) {
   const paths = await pickAudioFiles();
   if (paths.length === 0) return;
   const list = await api.addToPlaylist(playlistId, paths);
+  dropPlaylistCover(playlistId);
   useAppStore.getState().setPlaylists(list);
   invalidateBrowse("playlist", playlistId);
   await openBrowsePage({ kind: "playlist", id: playlistId }, true);
@@ -308,6 +482,7 @@ async function pickFolderInto(playlistId: string) {
   const folder = await pickFolder();
   if (!folder) return;
   const list = await api.addToPlaylist(playlistId, [folder]);
+  dropPlaylistCover(playlistId);
   useAppStore.getState().setPlaylists(list);
   invalidateBrowse("playlist", playlistId);
   await openBrowsePage({ kind: "playlist", id: playlistId }, true);

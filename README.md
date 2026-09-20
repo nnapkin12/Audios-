@@ -6,7 +6,7 @@
 
 <p align="center">
   A Linux desktop music player and metadata editor.<br>
-  Play your folders, search for something to hear, edit all tags, customize theme.
+  Local libraries, YouTube search via yt-dlp, tag editing, and custom themes.
 </p>
 
 <p align="center">
@@ -23,18 +23,18 @@
 
 ## What it is
 
-Audios! is a Music player/finder app for people who keep music locally. Open a file or a whole album tree, queue it, and play. There is a Search tab for finding music and saving it(or just hear it once, it caches and auto deletes when you play anything else), a Tags tab for artwork and all metadata, and Settings for themes (including ones you build yourself).
+Audios! is a Linux music player for local files. Open a file or a nested album tree, queue it, and play. Search uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to list YouTube results, then caches a temp file for playback (deleted when the track changes) or saves a copy. The Tags tab edits metadata and artwork. Settings includes built-in themes and a theme builder.
 
-It is built for Linux. Rust, and the window is a small React UI hosted by [Tauri](https://tauri.app/).
+It is built with Rust and a React UI hosted by [Tauri](https://tauri.app/).
 
-It is **not** a Spotify client. Search talks to YouTube through [yt-dlp](https://github.com/yt-dlp/yt-dlp).
+It is **not** a Spotify client. Search cannot pull Spotify-hosted audio.
 
 ## Features
 
-- **Music file Player** — open files or nested album folders. Queue, next / previous, repeat, shuffle, gapless, ReplayGain, resume where you left off.
-- **Search Music** — type a song name and artist, play it from a temp file, auto deletes that file when you change tracks, or save a copy if you want to keep it.
-- **Tags** — metadata. title, artists, album, lyrics, ReplayGain, MusicBrainz IDs, custom fields, artwork, and batch apply across a folder.
-- **UI/Themes** — Dusk, Midnight, Slate, Paper, plus a theme builder for your own colors.
+- **Music file Player** — open files or nested album folders. Queue, next / previous, repeat, shuffle, gapless, ReplayGain. Playlists can be named, custom picture, otherwise a mosaic is built from track artwork. Folder and playlist lists have their own search bars.
+- **Search** — query by song and artist (or paste a YouTube URL). Play uses a temp file that is deleted on track change; Download keeps a copy. Each result shows the watch URL.
+- **Tags** — title, artists, album, lyrics, ReplayGain, MusicBrainz IDs, custom fields, artwork, and batch apply across a folder.
+- **Themes** — Dusk, Midnight, Slate, Paper, plus a theme builder.
 
 A longer list lives in [docs/features.md](docs/features.md).
 
@@ -65,7 +65,7 @@ npm run tauri dev
 
 ### Search extras
 
-Search also needs a **current** yt-dlp. Atleast the Ubuntu `apt` package is usually years old and will fail on today’s YouTube. Install the GitHub binary:
+Search also needs a **current** yt-dlp. Distro `apt` packages are often years old and fail on current YouTube. Install the GitHub binary:
 
 ```bash
 mkdir -p ~/.local/bin
@@ -77,9 +77,9 @@ hash -r
 yt-dlp --version
 ```
 
- Restart Audios! after installing. Later updates: `yt-dlp -U`.
+Restart Audios! after installing. Later updates: `yt-dlp -U`.
 
-## build
+## Build
 
 ```bash
 npm run tauri build
@@ -87,7 +87,7 @@ npm run tauri build
 
 That writes an **AppImage** and a **.deb** under `src-tauri/target/release/bundle/`.
 
-`npm run tauri dev` is a normal process with your usual PATH.
+`npm run tauri dev` uses the host PATH. Search binaries are resolved from PATH, `~/.local/bin`, and pipx.
 
 ## Releases
 

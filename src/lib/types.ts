@@ -13,6 +13,7 @@ export interface Playlist {
   id: string;
   name: string;
   items: PlaylistItem[];
+  hasCover?: boolean;
 }
 
 export type BrowsePage =

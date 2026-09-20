@@ -1,7 +1,8 @@
 import { useState, type MouseEvent } from "react";
-import { FolderOpen, ListMusic, Plus, X } from "lucide-react";
+import { FolderOpen, Plus, X } from "lucide-react";
 import { invalidateBrowse, openBrowsePage, samePage } from "@/features/player/browse";
-import { api, pickAudioFiles, pickFolder, revealInFiles } from "@/lib/api";
+import { api, pickAudioFiles, pickFolder, pickImageFile, revealInFiles } from "@/lib/api";
+import { PlaylistCover, dropPlaylistCover } from "@/lib/covers";
 import { baseName, errorMessage } from "@/lib/format";
 import type { Playlist } from "@/lib/types";
 import type { MenuEntry } from "@/features/shell/ContextMenu";
@@ -26,9 +27,12 @@ export function LibraryNav({
 
   async function create() {
     try {
-      setPlaylists(await api.createPlaylist(name.trim()));
+      const list = await api.createPlaylist(name.trim());
+      setPlaylists(list);
       setName("");
       setCreating(false);
+      const created = list[list.length - 1];
+      if (created) await openBrowsePage({ kind: "playlist", id: created.id });
     } catch (error) {
       setStatus(errorMessage(error, "Could not create playlist"));
     }
@@ -64,7 +68,7 @@ export function LibraryNav({
       </p>
       {libraryRoots.length === 0 ? (
         <p className="mb-3 px-1 text-[13px] leading-5 text-app-muted">
-          Folder adds a library you can open or remove.
+          Add folder puts a library here that you can open or remove.
         </p>
       ) : (
         <div className="mb-3 flex flex-col gap-0.5">
@@ -106,6 +110,14 @@ export function LibraryNav({
         <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
           Playlists
         </p>
+        <button
+          type="button"
+          title="New playlist"
+          onClick={() => setCreating(true)}
+          className="rounded-md p-1 text-app-subtle hover:bg-app-hover hover:text-app-text"
+        >
+          <Plus size={16} />
+        </button>
       </div>
       {creating ? (
         <form
@@ -129,7 +141,7 @@ export function LibraryNav({
       ) : null}
       {playlists.length === 0 && !creating ? (
         <p className="px-1 text-[13px] leading-5 text-app-muted">
-          Make a playlist, then drop files or folders into it.
+          Press + to make a playlist, then add files or a folder.
         </p>
       ) : (
         <div className="flex flex-col gap-0.5">
@@ -156,6 +168,8 @@ function PlaylistRow({
   const browse = useAppStore((state) => state.browse);
   const setPlaylists = useAppStore((state) => state.setPlaylists);
   const setStatus = useAppStore((state) => state.setStatus);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(playlist.name);
   const active = browse.kind === "playlist" && browse.id === playlist.id;
 
   async function playFrom(startPath?: string) {
@@ -170,6 +184,7 @@ function PlaylistRow({
     const paths = await pickAudioFiles();
     if (paths.length === 0) return;
     setPlaylists(await api.addToPlaylist(playlist.id, paths));
+    dropPlaylistCover(playlist.id);
     invalidateBrowse("playlist", playlist.id);
     if (active) await openBrowsePage({ kind: "playlist", id: playlist.id }, true);
   }
@@ -178,11 +193,48 @@ function PlaylistRow({
     const folder = await pickFolder();
     if (!folder) return;
     setPlaylists(await api.addToPlaylist(playlist.id, [folder]));
+    dropPlaylistCover(playlist.id);
     invalidateBrowse("playlist", playlist.id);
     if (active) await openBrowsePage({ kind: "playlist", id: playlist.id }, true);
   }
 
+  async function commitRename() {
+    const next = draft.trim();
+    if (!next || next === playlist.name) {
+      setDraft(playlist.name);
+      setRenaming(false);
+      return;
+    }
+    try {
+      setPlaylists(await api.renamePlaylist(playlist.id, next));
+      setRenaming(false);
+    } catch (error) {
+      setStatus(errorMessage(error, "Could not rename playlist"));
+    }
+  }
+
+  async function changeCover() {
+    const path = await pickImageFile();
+    if (!path) return;
+    try {
+      dropPlaylistCover(playlist.id);
+      setPlaylists(await api.setPlaylistCover(playlist.id, path));
+    } catch (error) {
+      setStatus(errorMessage(error, "Could not set playlist picture"));
+    }
+  }
+
+  async function removeCover() {
+    try {
+      dropPlaylistCover(playlist.id);
+      setPlaylists(await api.clearPlaylistCover(playlist.id));
+    } catch (error) {
+      setStatus(errorMessage(error, "Could not remove playlist picture"));
+    }
+  }
+
   async function remove() {
+    dropPlaylistCover(playlist.id);
     setPlaylists(await api.deletePlaylist(playlist.id));
     if (active) await openBrowsePage({ kind: "home" });
   }
@@ -193,36 +245,81 @@ function PlaylistRow({
         active ? "bg-app-hover" : "hover:bg-app-hover"
       }`}
     >
-      <button
-        type="button"
-        onClick={() => void openBrowsePage({ kind: "playlist", id: playlist.id })}
-        onContextMenu={(event) =>
-          onMenu(event, [
-            {
-              kind: "action",
-              action: {
-                label: "Open",
-                onClick: () => void openBrowsePage({ kind: "playlist", id: playlist.id }),
+      {renaming ? (
+        <form
+          className="min-w-0 flex-1 px-1 py-1"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void commitRename();
+          }}
+        >
+          <input
+            autoFocus
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => void commitRename()}
+            className="w-full rounded-md border border-app-border bg-app px-2 py-1 text-[13px]"
+          />
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void openBrowsePage({ kind: "playlist", id: playlist.id })}
+          onDoubleClick={(event) => {
+            event.preventDefault();
+            setDraft(playlist.name);
+            setRenaming(true);
+          }}
+          onContextMenu={(event) =>
+            onMenu(event, [
+              {
+                kind: "action",
+                action: {
+                  label: "Open",
+                  onClick: () => void openBrowsePage({ kind: "playlist", id: playlist.id }),
+                },
               },
-            },
-            { kind: "action", action: { label: "Play", onClick: () => void playFrom() } },
-            { kind: "action", action: { label: "Add files", onClick: () => void addFiles() } },
-            { kind: "action", action: { label: "Add folder", onClick: () => void addFolder() } },
-            { kind: "sep" },
-            {
-              kind: "action",
-              action: { label: "Delete playlist", danger: true, onClick: () => void remove() },
-            },
-          ])
-        }
-        className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
-      >
-        <ListMusic size={15} className="shrink-0 text-app-accent" />
-        <span className="truncate text-[14px] font-semibold">{playlist.name}</span>
-        <span className="shrink-0 text-[12px] font-medium text-app-muted">
-          {playlist.items.length}
-        </span>
-      </button>
+              { kind: "action", action: { label: "Play", onClick: () => void playFrom() } },
+              {
+                kind: "action",
+                action: {
+                  label: "Rename",
+                  onClick: () => {
+                    setDraft(playlist.name);
+                    setRenaming(true);
+                  },
+                },
+              },
+              { kind: "action", action: { label: "Change picture", onClick: () => void changeCover() } },
+              ...(playlist.hasCover
+                ? ([
+                    {
+                      kind: "action",
+                      action: { label: "Remove picture", onClick: () => void removeCover() },
+                    },
+                  ] satisfies MenuEntry[])
+                : []),
+              { kind: "action", action: { label: "Add files", onClick: () => void addFiles() } },
+              { kind: "action", action: { label: "Add folder", onClick: () => void addFolder() } },
+              { kind: "sep" },
+              {
+                kind: "action",
+                action: { label: "Delete playlist", danger: true, onClick: () => void remove() },
+              },
+            ])
+          }
+          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+        >
+          <PlaylistCover
+            id={playlist.id}
+            className="h-8 w-8 rounded-md"
+          />
+          <span className="truncate text-[14px] font-semibold">{playlist.name}</span>
+          <span className="shrink-0 text-[12px] font-medium text-app-muted">
+            {playlist.items.length}
+          </span>
+        </button>
+      )}
       <button
         type="button"
         title="Delete playlist"
@@ -295,6 +392,7 @@ function folderMenu(
 }
 
 function refreshPlaylist(playlistId: string) {
+  dropPlaylistCover(playlistId);
   invalidateBrowse("playlist", playlistId);
   const browse = useAppStore.getState().browse;
   if (samePage(browse, { kind: "playlist", id: playlistId })) {

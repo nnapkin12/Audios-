@@ -4,7 +4,7 @@ pub mod scan;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
@@ -55,7 +55,6 @@ struct Logic {
     root: Option<PathBuf>,
     tree: Option<FolderNode>,
     error: Option<String>,
-    last_saved: Instant,
     pending_gapless: bool,
     want_playing: bool,
 }
@@ -82,7 +81,6 @@ impl Player {
                 root: None,
                 tree: None,
                 error: None,
-                last_saved: Instant::now(),
                 pending_gapless: false,
                 want_playing: false,
             })),
@@ -141,7 +139,6 @@ impl Player {
     }
 
     pub fn pause(&self) -> AppResult<PlayerSnapshot> {
-        self.remember_current();
         self.engine.pause()?;
         self.logic.lock().expect("player lock").want_playing = false;
         self.emit_state();
@@ -167,7 +164,7 @@ impl Player {
     }
 
     pub fn stop(&self) -> AppResult<PlayerSnapshot> {
-        self.remember_current();
+        self.forget_current();
         self.engine.stop()?;
         self.logic.lock().expect("player lock").want_playing = false;
         self.emit_state();
@@ -175,7 +172,7 @@ impl Player {
     }
 
     pub fn next(&self) -> AppResult<PlayerSnapshot> {
-        self.remember_current();
+        self.forget_current();
         let next_path = {
             let mut logic = self.logic.lock().expect("player lock");
             logic.pending_gapless = false;
@@ -199,7 +196,7 @@ impl Player {
             self.emit_state();
             return Ok(self.snapshot());
         }
-        self.remember_current();
+        self.forget_current();
         let previous = {
             let mut logic = self.logic.lock().expect("player lock");
             logic.pending_gapless = false;
@@ -214,13 +211,12 @@ impl Player {
 
     pub fn seek(&self, position_ms: u64) -> AppResult<PlayerSnapshot> {
         self.engine.seek(position_ms)?;
-        self.remember_current();
         self.emit_tick();
         Ok(self.snapshot())
     }
 
     pub fn play_index(&self, index: usize) -> AppResult<PlayerSnapshot> {
-        self.remember_current();
+        self.forget_current();
         let path = {
             let mut logic = self.logic.lock().expect("player lock");
             logic.pending_gapless = false;
@@ -236,7 +232,7 @@ impl Player {
     }
 
     pub fn play_path(&self, path: &str) -> AppResult<PlayerSnapshot> {
-        self.remember_current();
+        self.forget_current();
         let index = {
             let logic = self.logic.lock().expect("player lock");
             logic
@@ -270,7 +266,7 @@ impl Player {
         paths: Vec<String>,
         start_path: Option<String>,
     ) -> AppResult<PlayerSnapshot> {
-        self.remember_current();
+        self.forget_current();
         let mut tracks = Vec::new();
         for path in &paths {
             if let Ok(found) = collect_tracks(Path::new(path)) {
@@ -303,7 +299,7 @@ impl Player {
         tracks: Vec<Track>,
         start_path: Option<String>,
     ) -> AppResult<PlayerSnapshot> {
-        self.remember_current();
+        self.forget_current();
         if tracks.is_empty() {
             return Err(AppError::msg("no playable files"));
         }
@@ -438,11 +434,6 @@ impl Player {
         } else {
             self.engine.pause()?;
         }
-        if let Some(position) = self.persist.position_for(path) {
-            if position > 1500 {
-                let _ = self.engine.seek(position);
-            }
-        }
         Ok(())
     }
 
@@ -471,7 +462,7 @@ impl Player {
         }
     }
 
-    fn remember_current(&self) {
+    fn forget_current(&self) {
         let path = self
             .logic
             .lock()
@@ -480,11 +471,7 @@ impl Player {
             .current()
             .map(|track| track.path.clone());
         if let Some(path) = path {
-            self.persist.remember_position(
-                &path,
-                self.engine.position_ms(),
-                self.engine.duration_ms(),
-            );
+            self.persist.forget_position(&path);
         }
     }
 
@@ -530,7 +517,7 @@ impl Player {
     }
 
     fn on_eos(&self) {
-        self.remember_current();
+        self.forget_current();
         let next = {
             let mut logic = self.logic.lock().expect("player lock");
             if logic.pending_gapless {
@@ -575,20 +562,6 @@ impl Player {
             self.maybe_queue_gapless();
         }
 
-        if self.engine.is_playing() {
-            let should_save = {
-                let mut logic = self.logic.lock().expect("player lock");
-                if logic.last_saved.elapsed().as_secs() >= 5 {
-                    logic.last_saved = Instant::now();
-                    true
-                } else {
-                    false
-                }
-            };
-            if should_save {
-                self.remember_current();
-            }
-        }
         self.emit_tick();
     }
 

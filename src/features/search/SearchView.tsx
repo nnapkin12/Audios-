@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type MouseEvent } from "react";
 import { Download, Play, Search } from "lucide-react";
-import { api, pickSavePath } from "@/lib/api";
+import { api, openExternal, pickSavePath } from "@/lib/api";
 import { errorMessage, safeFileName } from "@/lib/format";
 import type { MediaHit } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
@@ -82,8 +82,8 @@ export function SearchView() {
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">Search</h1>
           <p className="mt-1 text-[14px] font-medium text-app-muted">
-            Search only asks YouTube for names and links. Play then downloads a temp audio file
-            (and deletes it when you change songs). Download keeps a copy.
+            Search lists YouTube titles and watch URLs. Play downloads a temp audio file and
+            deletes it when the track changes. Download keeps a copy.
           </p>
         </div>
 
@@ -135,23 +135,35 @@ export function SearchView() {
                     fetching || active ? "bg-app-hover" : "hover:bg-app-hover/70"
                   }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => void playHit(hit)}
-                    className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-1 py-1 text-left"
-                  >
-                    <span className="flex h-10 w-10 items-center justify-center rounded-md bg-app-raised text-app-text">
+                  <div className="flex min-w-0 flex-1 items-center gap-3 px-1 py-1">
+                    <button
+                      type="button"
+                      onClick={() => void playHit(hit)}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-app-raised text-app-text"
+                    >
                       <Play size={16} fill="currentColor" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-semibold text-app-text">
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => void playHit(hit)}
+                        className="block w-full truncate text-left text-[15px] font-semibold text-app-text"
+                      >
                         {hit.title}
-                      </span>
+                      </button>
                       <span className="block truncate text-[13px] font-medium text-app-muted">
                         {fetching ? "Getting audio…" : active ? "Playing" : "Play"}
                       </span>
-                    </span>
-                  </button>
+                      <button
+                        type="button"
+                        title="Open source"
+                        onClick={() => void openExternal(sourceUrl(hit))}
+                        className="mt-0.5 block w-full truncate text-left text-[12px] font-medium text-app-accent hover:underline"
+                      >
+                        {sourceUrl(hit)}
+                      </button>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     title="Download"
@@ -170,4 +182,8 @@ export function SearchView() {
       </div>
     </section>
   );
+}
+
+function sourceUrl(hit: MediaHit): string {
+  return hit.pageUrl || hit.url;
 }

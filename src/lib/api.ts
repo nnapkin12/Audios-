@@ -97,6 +97,23 @@ export async function pickAudioFile(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
+export async function pickImageFile(): Promise<string | null> {
+  if (!isTauri()) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: "Choose picture",
+    filters: [
+      {
+        name: "Images",
+        extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"],
+      },
+    ],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
 export async function pickFolder(): Promise<string | null> {
   if (!isTauri()) return null;
   const { open } = await import("@tauri-apps/plugin-dialog");
@@ -179,6 +196,10 @@ export const api = {
     invoke<Playlist[]>("add_to_playlist", { id, paths }),
   removeFromPlaylist: (id: string, path: string) =>
     invoke<Playlist[]>("remove_from_playlist", { id, path }),
+  setPlaylistCover: (id: string, path: string) =>
+    invoke<Playlist[]>("set_playlist_cover", { id, path }),
+  clearPlaylistCover: (id: string) => invoke<Playlist[]>("clear_playlist_cover", { id }),
+  playlistCover: (id: string) => invoke<CoverArt | null>("playlist_cover", { id }),
   getAppearance: () => invoke<Appearance>("get_appearance"),
   setAppearance: (theme: string, accent: string) =>
     invoke<Appearance>("set_appearance", { theme, accent }),

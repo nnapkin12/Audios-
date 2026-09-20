@@ -104,7 +104,7 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: rgb(var(--app-frame));
+  background: rgb(var(--app));
   color: rgb(var(--app-text));
   font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 15px;

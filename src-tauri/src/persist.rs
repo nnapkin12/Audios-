@@ -7,8 +7,6 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppResult;
 use crate::player::queue::RepeatMode;
 
-const MAX_POSITIONS: usize = 500;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistItem {
@@ -22,6 +20,8 @@ pub struct Playlist {
     pub id: String,
     pub name: String,
     pub items: Vec<PlaylistItem>,
+    #[serde(default)]
+    pub has_cover: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,6 +142,13 @@ impl Store {
         self.data.lock().expect("persist lock").clone()
     }
 
+    pub fn config_dir(&self) -> PathBuf {
+        self.path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| self.path.clone())
+    }
+
     pub fn update<F>(&self, mutate: F)
     where
         F: FnOnce(&mut PersistData),
@@ -151,6 +158,7 @@ impl Store {
         let _ = save_to(&self.path, &data);
     }
 
+    #[cfg(test)]
     pub fn position_for(&self, path: &str) -> Option<u64> {
         self.data
             .lock()
@@ -160,20 +168,9 @@ impl Store {
             .copied()
     }
 
-    pub fn remember_position(&self, path: &str, position_ms: u64, duration_ms: u64) {
+    pub fn forget_position(&self, path: &str) {
         self.update(|data| {
-            if duration_ms > 0 && position_ms + 3000 >= duration_ms {
-                data.positions.remove(path);
-                return;
-            }
-            data.positions.insert(path.to_string(), position_ms);
-            if data.positions.len() > MAX_POSITIONS {
-                let extra = data.positions.len() - MAX_POSITIONS;
-                let keys: Vec<String> = data.positions.keys().take(extra).cloned().collect();
-                for key in keys {
-                    data.positions.remove(&key);
-                }
-            }
+            data.positions.remove(path);
         });
     }
 }
@@ -231,15 +228,17 @@ mod tests {
     }
 
     #[test]
-    fn drops_near_end_positions() {
+    fn forgets_saved_position() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store {
             path: dir.path().join("state.json"),
             data: Arc::new(Mutex::new(PersistData::default())),
         };
-        store.remember_position("/song.flac", 180_000, 181_000);
-        assert!(store.position_for("/song.flac").is_none());
-        store.remember_position("/song.flac", 20_000, 181_000);
+        store.update(|data| {
+            data.positions.insert("/song.flac".into(), 20_000);
+        });
         assert_eq!(store.position_for("/song.flac"), Some(20_000));
+        store.forget_position("/song.flac");
+        assert!(store.position_for("/song.flac").is_none());
     }
 }

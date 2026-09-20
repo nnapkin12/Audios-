@@ -1,39 +1,44 @@
+import type { ReactNode } from "react";
+import { Minus, Square, X } from "lucide-react";
 import { windowAction } from "@/lib/api";
 
 export function Titlebar() {
   return (
     <header
       data-tauri-drag-region
-      className="drag-region flex h-10 shrink-0 items-center justify-between border-b border-app-line bg-app-raised px-3"
+      className="drag-region relative flex h-10 shrink-0 items-center border-b border-app-line bg-app-raised"
     >
-      <div className="no-drag flex items-center gap-2">
-        <Traffic color="#c97a7a" label="Close" onClick={() => void windowAction("close")} />
-        <Traffic color="#c9b27a" label="Minimize" onClick={() => void windowAction("minimize")} />
-        <Traffic
-          color="#8aa37a"
-          label="Maximize"
-          onClick={() => void windowAction("toggleMaximize")}
-        />
-      </div>
       <p
         data-tauri-drag-region
         className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[14px] font-semibold text-app-subtle"
       >
         Audios!
       </p>
-      <div className="w-[52px]" />
+      <div className="no-drag ml-auto flex h-full items-stretch">
+        <WinBtn label="Minimize" onClick={() => void windowAction("minimize")}>
+          <Minus size={14} strokeWidth={2.2} />
+        </WinBtn>
+        <WinBtn label="Maximize" onClick={() => void windowAction("toggleMaximize")}>
+          <Square size={11} strokeWidth={2.2} />
+        </WinBtn>
+        <WinBtn label="Close" danger onClick={() => void windowAction("close")}>
+          <X size={14} strokeWidth={2.2} />
+        </WinBtn>
+      </div>
     </header>
   );
 }
 
-function Traffic({
-  color,
+function WinBtn({
   label,
+  danger,
   onClick,
+  children,
 }: {
-  color: string;
   label: string;
+  danger?: boolean;
   onClick: () => void;
+  children: ReactNode;
 }) {
   return (
     <button
@@ -41,8 +46,13 @@ function Traffic({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className="h-[12px] w-[12px] rounded-full border border-black/20 transition-opacity hover:opacity-80"
-      style={{ background: color }}
-    />
+      className={`flex h-full w-11 items-center justify-center text-app-subtle transition-colors ${
+        danger
+          ? "hover:bg-app-danger hover:text-white"
+          : "hover:bg-app-hover hover:text-app-text"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

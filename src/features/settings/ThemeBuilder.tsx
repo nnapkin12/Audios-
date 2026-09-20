@@ -115,13 +115,8 @@ function ThemePreview({ colors, name }: { colors: ThemeColors; name: string }) {
   return (
     <div
       className="overflow-hidden rounded-lg border"
-      style={{ background: colors.frame, borderColor: colors.border }}
+      style={{ background: colors.app, borderColor: colors.border, color: colors.text }}
     >
-      <div className="p-2">
-        <div
-          className="overflow-hidden rounded-md border"
-          style={{ background: colors.app, borderColor: colors.border, color: colors.text }}
-        >
           <div
             className="flex items-center justify-between px-3 py-2 text-[12px] font-semibold"
             style={{ background: colors.raised, borderBottom: `1px solid ${colors.line}` }}
@@ -162,13 +157,11 @@ function ThemePreview({ colors, name }: { colors: ThemeColors; name: string }) {
               </div>
             </div>
           </div>
-          <div
-            className="px-3 py-2 text-[11px] font-semibold"
-            style={{ background: colors.bar, borderTop: `2px solid ${colors.barLine}`, color: colors.subtle }}
-          >
-            Now playing
-          </div>
-        </div>
+      <div
+        className="px-3 py-2 text-[11px] font-semibold"
+        style={{ background: colors.bar, borderTop: `2px solid ${colors.barLine}`, color: colors.subtle }}
+      >
+        Now playing
       </div>
     </div>
   );

@@ -266,6 +266,25 @@ pub fn remove_from_playlist(
     crate::playlists::remove_item(&store, id, path)
 }
 
+#[tauri::command]
+pub fn set_playlist_cover(
+    store: State<Store>,
+    id: String,
+    path: String,
+) -> AppResult<Vec<Playlist>> {
+    crate::playlists::set_cover_from_path(&store, id, path)
+}
+
+#[tauri::command]
+pub fn clear_playlist_cover(store: State<Store>, id: String) -> AppResult<Vec<Playlist>> {
+    crate::playlists::clear_cover(&store, id)
+}
+
+#[tauri::command]
+pub fn playlist_cover(store: State<Store>, id: String) -> AppResult<Option<CoverArt>> {
+    crate::playlists::cover(&store, &id)
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Appearance {

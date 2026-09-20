@@ -32,7 +32,7 @@ Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.
 
 ## UI
 
-Chrome lives in `src/features/shell`. Stay on WebKit-safe CSS. The window is frameless; keep the inset border so Linux compositors that draw a square frame still look finished.
+Chrome lives in `src/features/shell`. Stay on WebKit-safe CSS. The window is frameless and the UI fills the client area. Window buttons stay on the top right. Playlist pictures are JPEGs next to `state.json` in `playlist-covers/` (`{id}.jpg` custom, `{id}.auto.jpg` mosaic). Set a custom picture with the native file dialog and a path argument. Do not persist per-file resume offsets; leaving a track starts it at 0:00 next time.
 
 ## Comments
 
