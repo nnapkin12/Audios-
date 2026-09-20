@@ -13,7 +13,7 @@
   <a href="docs/features.md">Features</a> ·
   <a href="docs/architecture.md">Architecture</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="CREDITS.md">Credits</a> ·
+  <a href="https://github.com/nnapkin12/AudiosPlayer/wiki">Wiki</a> ·
   <a href="LICENSE">MIT</a>
 </p>
 
