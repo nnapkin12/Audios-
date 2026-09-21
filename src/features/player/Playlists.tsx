@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from "react";
-import { FolderOpen, Plus, X } from "lucide-react";
+import { Music, Plus, X } from "lucide-react";
 import { invalidateBrowse, openBrowsePage, samePage } from "@/features/player/browse";
 import { api, pickAudioFiles, pickFolder, pickImageFile, revealInFiles } from "@/lib/api";
 import { PlaylistCover, dropPlaylistCover } from "@/lib/covers";
@@ -12,10 +12,14 @@ export function LibraryNav({
   creating,
   setCreating,
   onMenu,
+  onAddFile,
+  onAddFolder,
 }: {
   creating: boolean;
   setCreating: (value: boolean) => void;
   onMenu: (event: MouseEvent, items: MenuEntry[]) => void;
+  onAddFile: () => void;
+  onAddFolder: () => void;
 }) {
   const playlists = useAppStore((state) => state.playlists);
   const libraryRoots = useAppStore((state) => state.libraryRoots);
@@ -46,7 +50,7 @@ export function LibraryNav({
         await openBrowsePage({ kind: "home" });
       }
     } catch (error) {
-      setStatus(errorMessage(error, "Could not remove folder"));
+      setStatus(errorMessage(error, "Couldn't remove this"));
     }
   }
 
@@ -63,12 +67,32 @@ export function LibraryNav({
         <span className="truncate text-[15px] font-semibold">Audios!</span>
       </button>
 
-      <p className="px-1 pb-1 text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
-        Folders
-      </p>
+      <div className="mb-1 flex items-center justify-between gap-2 px-1 pb-1">
+        <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
+          Library
+        </p>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            title="Play a song"
+            onClick={onAddFile}
+            className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
+          >
+            Play song
+          </button>
+          <button
+            type="button"
+            title="Add music to your library"
+            onClick={onAddFolder}
+            className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
+          >
+            Add music
+          </button>
+        </div>
+      </div>
       {libraryRoots.length === 0 ? (
         <p className="mb-3 px-1 text-[13px] leading-5 text-app-muted">
-          Add folder puts a library here that you can open or remove.
+          Add music to get started.
         </p>
       ) : (
         <div className="mb-3 flex flex-col gap-0.5">
@@ -89,12 +113,12 @@ export function LibraryNav({
                   }
                   className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
                 >
-                  <FolderOpen size={15} className="shrink-0 text-app-muted" />
+                  <Music size={15} className="shrink-0 text-app-muted" />
                   <span className="truncate text-[14px] font-semibold">{baseName(path)}</span>
                 </button>
                 <button
                   type="button"
-                  title="Remove folder"
+                  title="Remove from library"
                   onClick={() => void removeRoot(path)}
                   className="rounded p-1 text-app-muted hover:text-app-danger"
                 >
@@ -141,7 +165,7 @@ export function LibraryNav({
       ) : null}
       {playlists.length === 0 && !creating ? (
         <p className="px-1 text-[13px] leading-5 text-app-muted">
-          Press + to make a playlist, then add files or a folder.
+          Press + to make a playlist, then add songs.
         </p>
       ) : (
         <div className="flex flex-col gap-0.5">
@@ -190,7 +214,7 @@ function PlaylistRow({
   }
 
   async function addFolder() {
-    const folder = await pickFolder();
+    const folder = await pickFolder("Add album");
     if (!folder) return;
     setPlaylists(await api.addToPlaylist(playlist.id, [folder]));
     dropPlaylistCover(playlist.id);
@@ -299,8 +323,8 @@ function PlaylistRow({
                     },
                   ] satisfies MenuEntry[])
                 : []),
-              { kind: "action", action: { label: "Add files", onClick: () => void addFiles() } },
-              { kind: "action", action: { label: "Add folder", onClick: () => void addFolder() } },
+              { kind: "action", action: { label: "Add songs", onClick: () => void addFiles() } },
+              { kind: "action", action: { label: "Add album", onClick: () => void addFolder() } },
               { kind: "sep" },
               {
                 kind: "action",
@@ -312,12 +336,9 @@ function PlaylistRow({
         >
           <PlaylistCover
             id={playlist.id}
-            className="h-8 w-8 rounded-md"
+            className="h-10 w-10 rounded-md"
           />
           <span className="truncate text-[14px] font-semibold">{playlist.name}</span>
-          <span className="shrink-0 text-[12px] font-medium text-app-muted">
-            {playlist.items.length}
-          </span>
         </button>
       )}
       <button
@@ -354,7 +375,7 @@ function folderMenu(
           void api.playQueuePaths([path]).then((snapshot) => {
             useAppStore.getState().applySnapshot(snapshot);
           }).catch((error) => {
-            setStatus(errorMessage(error, "Could not play folder"));
+            setStatus(errorMessage(error, "Couldn't play this"));
           });
         },
       },
@@ -375,10 +396,10 @@ function folderMenu(
     {
       kind: "action",
       action: {
-        label: "Show in files",
+        label: "Show in Files",
         onClick: () => {
           void revealInFiles(path).catch((error) => {
-            setStatus(errorMessage(error, "Could not open files"));
+            setStatus(errorMessage(error, "Couldn't open Files"));
           });
         },
       },

@@ -9,6 +9,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+use crate::eq::{self, EqPersist, EqUpdate, EqUserPreset};
 use crate::error::{AppError, AppResult};
 use crate::persist::Store;
 
@@ -34,6 +35,7 @@ pub struct PlayerSnapshot {
     pub shuffle: bool,
     pub replaygain: bool,
     pub gapless: bool,
+    pub eq: eq::EqState,
     pub root: Option<String>,
     pub tree: Option<FolderNode>,
     pub error: Option<String>,
@@ -53,10 +55,10 @@ struct Logic {
     replaygain: bool,
     gapless: bool,
     root: Option<PathBuf>,
-    tree: Option<FolderNode>,
     error: Option<String>,
     pending_gapless: bool,
     want_playing: bool,
+    eq: EqPersist,
 }
 
 #[derive(Clone)]
@@ -79,15 +81,16 @@ impl Player {
                 replaygain: saved.replaygain,
                 gapless: saved.gapless,
                 root: None,
-                tree: None,
                 error: None,
                 pending_gapless: false,
                 want_playing: false,
+                eq: saved.eq.clone(),
             })),
             persist,
             app,
         };
         crate::search::clear_temps();
+        let _ = player.engine.set_eq(eq::EqParams::from_persist(&saved.eq));
 
         let weak = player.clone();
         std::thread::Builder::new()
@@ -102,11 +105,21 @@ impl Player {
     }
 
     pub fn snapshot(&self) -> PlayerSnapshot {
+        self.snapshot_eq(false)
+    }
+
+    pub fn snapshot_ui(&self) -> PlayerSnapshot {
+        self.snapshot_eq(true)
+    }
+
+    fn snapshot_eq(&self, eq_catalog: bool) -> PlayerSnapshot {
         let logic = self.logic.lock().expect("player lock");
         PlayerSnapshot {
             current: logic.queue.current().cloned(),
             index: logic.queue.index,
-            queue: logic.queue.tracks.clone(),
+            // Webview only needs the current track. Skip the queue, folder tree,
+            // and EQ catalog on volume/seek ticks so IPC stays small.
+            queue: Vec::new(),
             playing: self.engine.is_playing(),
             position_ms: self.engine.position_ms(),
             duration_ms: self.current_duration(&logic),
@@ -116,11 +129,16 @@ impl Player {
             shuffle: logic.queue.shuffle,
             replaygain: logic.replaygain,
             gapless: logic.gapless,
+            eq: if eq_catalog {
+                eq::state_with_catalog(&logic.eq)
+            } else {
+                eq::state_from(&logic.eq)
+            },
             root: logic
                 .root
                 .as_ref()
                 .map(|path| path.to_string_lossy().to_string()),
-            tree: logic.tree.clone(),
+            tree: None,
             error: logic.error.clone(),
         }
     }
@@ -157,7 +175,7 @@ impl Player {
                 .current()
                 .is_none()
             {
-                return Err(AppError::msg("open a file or folder first"));
+                return Err(AppError::msg("Nothing playing"));
             }
             self.play()
         }
@@ -274,7 +292,7 @@ impl Player {
             }
         }
         if tracks.is_empty() {
-            return Err(AppError::msg("that playlist has no playable files"));
+            return Err(AppError::msg("This playlist is empty"));
         }
         let start = start_path
             .as_deref()
@@ -301,7 +319,7 @@ impl Player {
     ) -> AppResult<PlayerSnapshot> {
         self.forget_current();
         if tracks.is_empty() {
-            return Err(AppError::msg("no playable files"));
+            return Err(AppError::msg("Nothing to play"));
         }
         let start = start_path
             .as_deref()
@@ -379,6 +397,43 @@ impl Player {
         Ok(self.snapshot())
     }
 
+    pub fn set_eq(&self, update: EqUpdate) -> AppResult<PlayerSnapshot> {
+        let params = eq::EqParams::from_update(&update);
+        {
+            let mut logic = self.logic.lock().expect("player lock");
+            eq::apply_update(&mut logic.eq, &update);
+        }
+        let _ = self.engine.set_eq(params);
+        self.persist
+            .update(|data| eq::apply_update(&mut data.eq, &update));
+        self.emit_state();
+        Ok(self.snapshot())
+    }
+
+    pub fn save_custom_eq(&self, preset: EqUserPreset) -> AppResult<PlayerSnapshot> {
+        let (eq, params) = {
+            let mut logic = self.logic.lock().expect("player lock");
+            eq::upsert_user_preset(&mut logic.eq, preset)?;
+            (logic.eq.clone(), eq::EqParams::from_persist(&logic.eq))
+        };
+        self.persist.update(|data| data.eq = eq);
+        let _ = self.engine.set_eq(params);
+        self.emit_state();
+        Ok(self.snapshot())
+    }
+
+    pub fn delete_custom_eq(&self, id: String) -> AppResult<PlayerSnapshot> {
+        let (eq, params) = {
+            let mut logic = self.logic.lock().expect("player lock");
+            eq::delete_user_preset(&mut logic.eq, &id)?;
+            (logic.eq.clone(), eq::EqParams::from_persist(&logic.eq))
+        };
+        self.persist.update(|data| data.eq = eq);
+        let _ = self.engine.set_eq(params);
+        self.emit_state();
+        Ok(self.snapshot())
+    }
+
     fn open_path_inner(&self, path: &str, play: bool) -> AppResult<()> {
         let path = PathBuf::from(path);
         if !path.exists() {
@@ -386,7 +441,7 @@ impl Player {
         }
         let tracks = collect_tracks(&path)?;
         if tracks.is_empty() {
-            return Err(AppError::msg("no audio files in that folder"));
+            return Err(AppError::msg("No songs here"));
         }
         let root = if path.is_file() {
             path.parent().map(Path::to_path_buf).unwrap_or(path.clone())
@@ -404,7 +459,6 @@ impl Player {
         let first = {
             let mut logic = self.logic.lock().expect("player lock");
             logic.root = Some(root.clone());
-            logic.tree = None;
             logic.error = None;
             logic.pending_gapless = false;
             logic.queue.replace(tracks, start);

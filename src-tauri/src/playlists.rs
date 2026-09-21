@@ -281,24 +281,23 @@ fn compose_mosaic(tiles: &[RgbImage]) -> RgbImage {
 
 pub fn add_paths(store: &Store, id: String, paths: Vec<String>) -> AppResult<Vec<Playlist>> {
     if paths.is_empty() {
-        return Err(AppError::msg("nothing to add"));
+        return Err(AppError::msg("Nothing to add"));
+    }
+    let songs = expand_songs(&paths)?;
+    if songs.is_empty() {
+        return Err(AppError::msg("No songs here"));
     }
     let mut found = false;
     store.update(|data| {
         if let Some(playlist) = data.playlists.iter_mut().find(|playlist| playlist.id == id) {
             found = true;
-            for path in &paths {
+            for path in &songs {
                 if playlist.items.iter().any(|item| item.path == *path) {
                     continue;
                 }
-                let kind = if Path::new(path).is_dir() {
-                    "dir"
-                } else {
-                    "file"
-                };
                 playlist.items.push(PlaylistItem {
                     path: path.clone(),
-                    kind: kind.into(),
+                    kind: "file".into(),
                 });
             }
         }
@@ -315,7 +314,7 @@ pub fn remove_item(store: &Store, id: String, path: String) -> AppResult<Vec<Pla
     store.update(|data| {
         if let Some(playlist) = data.playlists.iter_mut().find(|playlist| playlist.id == id) {
             found = true;
-            playlist.items.retain(|item| item.path != path);
+            playlist.items = split_out_song(&playlist.items, &path);
         }
     });
     if !found {
@@ -323,6 +322,59 @@ pub fn remove_item(store: &Store, id: String, path: String) -> AppResult<Vec<Pla
     }
     drop_auto_cover(store, &id);
     Ok(list(store))
+}
+
+fn expand_songs(paths: &[String]) -> AppResult<Vec<String>> {
+    let mut songs = Vec::new();
+    for path in paths {
+        let root = Path::new(path);
+        if root.is_dir() {
+            for file in crate::player::scan::audio_paths(root)? {
+                push_unique(&mut songs, file.to_string_lossy().to_string());
+            }
+            continue;
+        }
+        if root.exists() && !crate::player::scan::is_audio_path(root) {
+            continue;
+        }
+        push_unique(&mut songs, path.clone());
+    }
+    Ok(songs)
+}
+
+fn split_out_song(items: &[PlaylistItem], path: &str) -> Vec<PlaylistItem> {
+    let mut next = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for item in items {
+        if item.path == path {
+            continue;
+        }
+        if item.kind == "dir" && Path::new(path).starts_with(Path::new(&item.path)) {
+            if let Ok(files) = crate::player::scan::audio_paths(Path::new(&item.path)) {
+                for file in files {
+                    let song = file.to_string_lossy().to_string();
+                    if song == path || !seen.insert(song.clone()) {
+                        continue;
+                    }
+                    next.push(PlaylistItem {
+                        path: song,
+                        kind: "file".into(),
+                    });
+                }
+            }
+            continue;
+        }
+        if seen.insert(item.path.clone()) {
+            next.push(item.clone());
+        }
+    }
+    next
+}
+
+fn push_unique(songs: &mut Vec<String>, path: String) {
+    if !songs.iter().any(|song| song == &path) {
+        songs.push(path);
+    }
 }
 
 pub fn flatten_paths(playlist: &Playlist) -> Vec<String> {
@@ -336,7 +388,7 @@ pub fn flatten_paths(playlist: &Playlist) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persist::Store;
+    use crate::persist::{PlaylistItem, Store};
 
     fn store() -> (tempfile::TempDir, Store) {
         let dir = tempfile::tempdir().unwrap();
@@ -353,6 +405,57 @@ mod tests {
         let id = playlists[0].id.clone();
         let playlists = add_paths(&store, id, vec!["/a/song.mp3".into()]).unwrap();
         assert_eq!(playlists[0].items.len(), 1);
+        assert_eq!(playlists[0].items[0].kind, "file");
+    }
+
+    #[test]
+    fn add_folder_stores_songs() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::for_test(dir.path());
+        let album = dir.path().join("album");
+        std::fs::create_dir_all(&album).unwrap();
+        std::fs::write(album.join("a.mp3"), []).unwrap();
+        std::fs::write(album.join("b.mp3"), []).unwrap();
+        std::fs::write(album.join("notes.txt"), []).unwrap();
+        let playlists = create(&store, "Late".into()).unwrap();
+        let id = playlists[0].id.clone();
+        let playlists = add_paths(&store, id, vec![album.to_string_lossy().into()]).unwrap();
+        assert_eq!(playlists[0].items.len(), 2);
+        assert!(playlists[0].items.iter().all(|item| item.kind == "file"));
+    }
+
+    #[test]
+    fn add_empty_folder_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::for_test(dir.path());
+        let album = dir.path().join("empty");
+        std::fs::create_dir_all(&album).unwrap();
+        let playlists = create(&store, "Late".into()).unwrap();
+        let id = playlists[0].id.clone();
+        assert!(add_paths(&store, id, vec![album.to_string_lossy().into()]).is_err());
+    }
+
+    #[test]
+    fn remove_song_splits_legacy_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::for_test(dir.path());
+        let album = dir.path().join("album");
+        std::fs::create_dir_all(&album).unwrap();
+        let a = album.join("a.mp3");
+        let b = album.join("b.mp3");
+        std::fs::write(&a, []).unwrap();
+        std::fs::write(&b, []).unwrap();
+        let playlists = create(&store, "Late".into()).unwrap();
+        let id = playlists[0].id.clone();
+        store.update(|data| {
+            data.playlists[0].items = vec![PlaylistItem {
+                path: album.to_string_lossy().into(),
+                kind: "dir".into(),
+            }];
+        });
+        let playlists = remove_item(&store, id, a.to_string_lossy().into()).unwrap();
+        assert_eq!(playlists[0].items.len(), 1);
+        assert_eq!(playlists[0].items[0].path, b.to_string_lossy());
         assert_eq!(playlists[0].items[0].kind, "file");
     }
 

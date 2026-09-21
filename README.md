@@ -21,7 +21,7 @@
   GitHub: <a href="https://github.com/nnapkin12/AudiosPlayer">AudiosPlayer</a>
 </p>
 
-## What it is
+## Quick Intro
 
 Audios! is a Linux music player for local files. Open a file or a nested album tree, queue it, and play. Search uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) to list YouTube results, then caches a temp file for playback (deleted when the track changes) or saves a copy. The Tags tab edits metadata and artwork. Settings includes built-in themes and a theme builder.
 
@@ -31,67 +31,18 @@ It is **not** a Spotify client. Search cannot pull Spotify-hosted audio.
 
 ## Features
 
-- **Music file Player** — open files or nested album folders. Queue, next / previous, repeat, shuffle, gapless, ReplayGain. Playlists can be named, custom picture, otherwise a mosaic is built from track artwork. Folder and playlist lists have their own search bars.
-- **Search** — query by song and artist (or paste a YouTube URL). Play uses a temp file that is deleted on track change; Download keeps a copy. Each result shows the watch URL.
-- **Tags** — title, artists, album, lyrics, ReplayGain, MusicBrainz IDs, custom fields, artwork, and batch apply across a folder.
-- **Themes** — Dusk, Midnight, Slate, Paper, plus a theme builder.
+- **Music Player** — library, nested albums, queue, next / previous, repeat, shuffle, gapless, ReplayGain, and an app-wide graphic EQ. Playlists are named lists of songs with a custom picture, otherwise a mosaic from track artwork. Library and playlist lists have their own search bars.
+- **Search** — query by song and artist (or paste a YouTube URL). Results show thumbnails. Play uses a temp file that is deleted on track change; Download keeps a copy.
+- **Tags** — title, artists, album, lyrics, ReplayGain, MusicBrainz IDs, custom fields, artwork (including Find artwork), and batch apply across a folder.
+- **Themes** — Dusk, Midnight, Slate, Paper, plus a theme builder with simple grouped colors and Advanced per-token edits.
 
 A longer list lives in [docs/features.md](docs/features.md).
 
-## Run
 
-You need Rust 1.80+, Node 18+, and the usual Tauri / ALSA packages:
-
-```bash
-sudo apt install \
-  libwebkit2gtk-4.1-dev \
-  libgtk-3-dev \
-  libasound2-dev \
-  libxdo-dev \
-  libssl-dev \
-  libayatana-appindicator3-dev \
-  librsvg2-dev \
-  ffmpeg
-```
-
-Then:
-
-```bash
-npm install
-npm run tauri dev
-```
-
-`npm run dev` is a UI-only preview (no playback or tag writes).
-
-### Search extras
-
-Search also needs a **current** yt-dlp. Distro `apt` packages are often years old and fail on current YouTube. Install the GitHub binary:
-
-```bash
-mkdir -p ~/.local/bin
-curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ~/.local/bin/yt-dlp
-chmod a+rx ~/.local/bin/yt-dlp
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-hash -r
-yt-dlp --version
-```
-
-Restart Audios! after installing. Later updates: `yt-dlp -U`.
-
-## Build
-
-```bash
-npm run tauri build
-```
-
-That writes an **AppImage** and a **.deb** under `src-tauri/target/release/bundle/`.
-
-`npm run tauri dev` uses the host PATH. Search binaries are resolved from PATH, `~/.local/bin`, and pipx.
 
 ## Releases
 
-GitHub Release assets are those two installer files only. Search still needs a **host** yt-dlp, ffmpeg, and curl; they are not inside the package.
+GitHub Release assets are  two installer files, Music Search still needs a **host** (installed yt-dlp, ffmpeg, and curl); they are not inside the package.
 
 ## License
 

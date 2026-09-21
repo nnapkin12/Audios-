@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { api } from "@/lib/api";
 import { pictureSrc } from "@/lib/format";
 import { applyAppearance, type CustomTheme } from "@/lib/theme";
+import { applyMotion } from "@/lib/motion";
 import type { BrowsePage, Playlist, PlayerSnapshot, Tick, Track } from "@/lib/types";
 
 export type AppTab = "player" | "search" | "tags" | "settings";
@@ -24,6 +25,7 @@ interface AppState {
   theme: string;
   accent: string;
   customThemes: CustomTheme[];
+  minimizeMovement: boolean;
   tagFocusPath: string | null;
   setTab: (tab: AppTab) => void;
   setNowPlayingOpen: (open: boolean) => void;
@@ -35,6 +37,7 @@ interface AppState {
   setPageLoading: (loading: boolean) => void;
   setTagFocusPath: (path: string | null) => void;
   setAppearance: (theme: string, accent: string, customThemes?: CustomTheme[]) => void;
+  setMinimizeMovement: (enabled: boolean) => void;
   applySnapshot: (snapshot: PlayerSnapshot) => void;
   applyTick: (tick: Tick) => void;
   refreshCover: (path: string | null) => Promise<void>;
@@ -57,9 +60,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   theme: "dusk",
   accent: "blue",
   customThemes: [],
+  minimizeMovement: false,
   tagFocusPath: null,
   setTab: (tab) => set({ tab }),
-  setNowPlayingOpen: (nowPlayingOpen) => set({ nowPlayingOpen }),
+  setNowPlayingOpen: (nowPlayingOpen) => {
+    set({ nowPlayingOpen });
+    if (nowPlayingOpen) {
+      void get().refreshCover(get().snapshot?.current?.path ?? null);
+    }
+  },
   setStatus: (status, tone = "error") =>
     set({ status, statusTone: status ? tone : "error" }),
   setPlaylists: (playlists) => set({ playlists }),
@@ -73,10 +82,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     applyAppearance(theme, accent, nextThemes);
     set({ theme, accent, customThemes: nextThemes });
   },
+  setMinimizeMovement: (enabled) => {
+    applyMotion(enabled);
+    set({ minimizeMovement: enabled });
+  },
   applySnapshot: (snapshot) => {
     const previous = get().snapshot?.current?.path ?? null;
+    const prevEq = get().snapshot?.eq;
+    const eq = snapshot.eq
+      ? {
+          ...snapshot.eq,
+          builtins:
+            snapshot.eq.builtins.length > 0
+              ? snapshot.eq.builtins
+              : (prevEq?.builtins ?? []),
+        }
+      : snapshot.eq;
     set({
-      snapshot,
+      snapshot: { ...snapshot, eq },
       status: snapshot.error,
       statusTone: "error",
       positionMs: snapshot.positionMs,
@@ -84,7 +107,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     const next = snapshot.current?.path ?? null;
     if (next !== previous) {
-      void get().refreshCover(next);
+      if (get().nowPlayingOpen) void get().refreshCover(next);
+      else set({ coverUrl: null });
     }
   },
   applyTick: (tick) => {

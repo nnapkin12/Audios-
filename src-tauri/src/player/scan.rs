@@ -54,11 +54,15 @@ pub fn hidden(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+pub fn audio_paths(path: &Path) -> AppResult<Vec<PathBuf>> {
+    walk_audio_files(path)
+}
+
 fn walk_audio_files(path: &Path) -> AppResult<Vec<PathBuf>> {
     if path.is_file() {
         if !is_audio_path(path) {
             return Err(crate::error::AppError::msg(
-                "that file is not a supported audio type",
+                "That isn't a song Audios! can play",
             ));
         }
         return Ok(vec![path.to_path_buf()]);

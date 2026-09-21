@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
-import type { ThemeColors } from "@/lib/theme";
-import { THEME_COLOR_FIELDS, cloneThemeColors, normalizeHex } from "@/lib/theme";
+import type { SimpleThemeKey, ThemeColors } from "@/lib/theme";
+import {
+  SIMPLE_THEME_FIELDS,
+  THEME_COLOR_FIELDS,
+  applySimpleThemeColor,
+  cloneThemeColors,
+  normalizeHex,
+} from "@/lib/theme";
 
 export function ThemeBuilder({
   initialName,
@@ -15,6 +21,7 @@ export function ThemeBuilder({
 }) {
   const [name, setName] = useState(initialName);
   const [colors, setColors] = useState(() => cloneThemeColors(initialColors));
+  const [advanced, setAdvanced] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -26,6 +33,10 @@ export function ThemeBuilder({
 
   function update(key: keyof ThemeColors, value: string) {
     setColors((current) => ({ ...current, [key]: normalizeHex(value) }));
+  }
+
+  function updateSimple(key: SimpleThemeKey, value: string) {
+    setColors((current) => applySimpleThemeColor(current, key, value));
   }
 
   return (
@@ -51,27 +62,41 @@ export function ThemeBuilder({
         <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
           <ThemePreview colors={colors} name={name.trim() || "Custom theme"} />
           <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {THEME_COLOR_FIELDS.map((field) => (
-              <label key={field.key} className="flex items-center justify-between gap-3">
-                <span className="text-[14px] font-semibold text-app-subtle">{field.label}</span>
-                <span className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={colors[field.key]}
-                    onChange={(event) => update(field.key, event.target.value)}
-                    className="h-8 w-10 cursor-pointer rounded border border-app-border bg-transparent p-0"
-                    aria-label={field.label}
-                  />
-                  <input
-                    value={colors[field.key]}
-                    onChange={(event) => update(field.key, event.target.value)}
-                    spellCheck={false}
-                    className="w-[92px] rounded-md border border-app-border bg-app px-2 py-1 font-mono text-[13px] text-app-text"
-                  />
-                </span>
-              </label>
+            {SIMPLE_THEME_FIELDS.map((field) => (
+              <ColorField
+                key={field.key}
+                label={field.label}
+                value={colors[field.key]}
+                onChange={(value) => updateSimple(field.key, value)}
+              />
             ))}
           </div>
+          <label className="mt-5 flex cursor-pointer items-start justify-between gap-4">
+            <span>
+              <span className="block text-[16px] font-semibold text-app-text">Advanced</span>
+              <span className="mt-1 block text-[14px] leading-6 text-app-muted">
+                Edit each color on its own.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={advanced}
+              onChange={(event) => setAdvanced(event.target.checked)}
+              className="mt-1 h-4 w-4"
+            />
+          </label>
+          {advanced ? (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {THEME_COLOR_FIELDS.map((field) => (
+                <ColorField
+                  key={field.key}
+                  label={field.label}
+                  value={colors[field.key]}
+                  onChange={(value) => update(field.key, value)}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <form
@@ -108,6 +133,37 @@ export function ThemeBuilder({
         </form>
       </div>
     </div>
+  );
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3">
+      <span className="text-[14px] font-semibold text-app-subtle">{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-8 w-10 cursor-pointer rounded border border-app-border bg-transparent p-0"
+          aria-label={label}
+        />
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          spellCheck={false}
+          className="w-[92px] rounded-md border border-app-border bg-app px-2 py-1 font-mono text-[13px] text-app-text"
+        />
+      </span>
+    </label>
   );
 }
 
@@ -166,4 +222,3 @@ function ThemePreview({ colors, name }: { colors: ThemeColors; name: string }) {
     </div>
   );
 }
-

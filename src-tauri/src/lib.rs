@@ -1,4 +1,5 @@
 mod commands;
+mod eq;
 mod error;
 mod library;
 mod persist;
@@ -49,6 +50,9 @@ pub fn run() {
             commands::set_shuffle,
             commands::set_replaygain,
             commands::set_gapless,
+            commands::set_eq,
+            commands::save_custom_eq,
+            commands::delete_custom_eq,
             commands::read_tags,
             commands::write_tags,
             commands::batch_write,
@@ -71,10 +75,13 @@ pub fn run() {
             commands::playlist_cover,
             commands::get_appearance,
             commands::set_appearance,
+            commands::set_minimize_movement,
             commands::save_custom_theme,
             commands::delete_custom_theme,
             commands::search_stream,
             commands::search_media,
+            commands::search_covers,
+            commands::add_cover_from_url,
             commands::play_media,
             commands::save_media,
         ])

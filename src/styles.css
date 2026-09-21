@@ -173,3 +173,151 @@ input[type="range"]::-webkit-slider-thumb {
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
+@keyframes tab-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes np-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes np-cover {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes icon-in {
+  from {
+    opacity: 0.4;
+    transform: scale(0.84);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tab-panel {
+  animation: tab-in 180ms ease-out;
+}
+
+.np-overlay {
+  animation: np-in 200ms ease-out;
+}
+
+.np-cover {
+  animation: np-cover 280ms ease-out;
+}
+
+.play-pause-icon {
+  animation: icon-in 150ms ease-out;
+}
+
+.seek-fill {
+  transform-origin: left center;
+}
+
+@keyframes transport-pop {
+  from {
+    opacity: 0.45;
+    transform: scale(0.84);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cover-swap {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.t-btn {
+  transition: transform 90ms ease, color 120ms ease;
+}
+
+.t-btn:active {
+  transform: scale(0.9);
+}
+
+.t-btn-next:active {
+  transform: translateX(3px);
+}
+
+.t-btn-prev:active {
+  transform: translateX(-3px);
+}
+
+.t-pop {
+  animation: transport-pop 150ms ease-out;
+}
+
+.cover-swap {
+  animation: cover-swap 180ms ease-out;
+}
+
+.drop-ready {
+  border-color: rgb(96 180 120);
+  background: rgb(96 180 120 / 0.18);
+  color: rgb(var(--app-text));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-panel,
+  .np-overlay,
+  .np-cover,
+  .play-pause-icon,
+  .t-pop,
+  .cover-swap {
+    animation: none;
+  }
+
+  .t-btn,
+  .t-btn:active,
+  .t-btn-next:active,
+  .t-btn-prev:active {
+    transition: none;
+    transform: none;
+  }
+}
+
+[data-motion="min"] .tab-panel,
+[data-motion="min"] .np-overlay,
+[data-motion="min"] .np-cover,
+[data-motion="min"] .play-pause-icon,
+[data-motion="min"] .t-pop,
+[data-motion="min"] .cover-swap {
+  animation: none;
+}
+
+[data-motion="min"] .t-btn,
+[data-motion="min"] .t-btn:active,
+[data-motion="min"] .t-btn-next:active,
+[data-motion="min"] .t-btn-prev:active {
+  transition: none;
+  transform: none;
+}

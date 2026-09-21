@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent } from "react";
-import { Pause, Play } from "lucide-react";
+import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
 import { api } from "@/lib/api";
 import { CoverThumb } from "@/lib/covers";
 import { displayArtist, displayTitle, errorMessage, formatTime } from "@/lib/format";
@@ -87,11 +87,7 @@ export function TrackList({
                   hovered ? "opacity-100" : "opacity-0"
                 }`}
               >
-                {showPause ? (
-                  <Pause size={16} fill="currentColor" />
-                ) : (
-                  <Play size={16} fill="currentColor" />
-                )}
+                <PlayPauseIcon playing={showPause} size={16} />
               </span>
             </button>
             <span className="w-7 shrink-0 text-right text-[13px] font-semibold tabular-nums text-app-muted">

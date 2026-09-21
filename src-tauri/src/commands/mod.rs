@@ -2,6 +2,7 @@ use std::path::Path;
 
 use tauri::State;
 
+use crate::eq::{EqUpdate, EqUserPreset};
 use crate::error::{AppError, AppResult};
 use crate::persist::{CustomTheme, Playlist, Store};
 use crate::player::queue::RepeatMode;
@@ -12,7 +13,7 @@ use crate::tags::{CoverArt, TagDoc, TagFields};
 
 #[tauri::command]
 pub fn player_state(player: State<Player>) -> PlayerSnapshot {
-    player.snapshot()
+    player.snapshot_ui()
 }
 
 #[tauri::command]
@@ -174,6 +175,21 @@ pub fn set_gapless(player: State<Player>, enabled: bool) -> AppResult<PlayerSnap
 }
 
 #[tauri::command]
+pub fn set_eq(player: State<Player>, eq: EqUpdate) -> AppResult<PlayerSnapshot> {
+    player.set_eq(eq)
+}
+
+#[tauri::command]
+pub fn save_custom_eq(player: State<Player>, preset: EqUserPreset) -> AppResult<PlayerSnapshot> {
+    player.save_custom_eq(preset)
+}
+
+#[tauri::command]
+pub fn delete_custom_eq(player: State<Player>, id: String) -> AppResult<PlayerSnapshot> {
+    player.delete_custom_eq(id)
+}
+
+#[tauri::command]
 pub fn read_tags(path: String) -> AppResult<TagDoc> {
     crate::tags::read_tags(&path)
 }
@@ -291,6 +307,8 @@ pub struct Appearance {
     pub theme: String,
     pub accent: String,
     pub custom_themes: Vec<CustomTheme>,
+    #[serde(default)]
+    pub minimize_movement: bool,
 }
 
 fn appearance_from(store: &Store) -> Appearance {
@@ -299,6 +317,7 @@ fn appearance_from(store: &Store) -> Appearance {
         theme: data.theme,
         accent: data.accent,
         custom_themes: data.custom_themes,
+        minimize_movement: data.minimize_movement,
     }
 }
 
@@ -313,6 +332,12 @@ pub fn set_appearance(store: State<Store>, theme: String, accent: String) -> App
         data.theme = theme;
         data.accent = accent;
     });
+    appearance_from(&store)
+}
+
+#[tauri::command]
+pub fn set_minimize_movement(store: State<Store>, enabled: bool) -> Appearance {
+    store.update(|data| data.minimize_movement = enabled);
     appearance_from(&store)
 }
 
@@ -352,6 +377,20 @@ pub async fn search_stream(query: String) -> AppResult<MediaHit> {
 #[tauri::command]
 pub async fn search_media(query: String) -> AppResult<Vec<MediaHit>> {
     run_blocking(move || crate::search::search_media(&query)).await
+}
+
+#[tauri::command]
+pub async fn search_covers(query: String) -> AppResult<Vec<MediaHit>> {
+    run_blocking(move || crate::search::search_covers(&query)).await
+}
+
+#[tauri::command]
+pub async fn add_cover_from_url(path: String, url: String, kind: String) -> AppResult<TagDoc> {
+    run_blocking(move || {
+        let data = crate::search::fetch_cover_image(&url)?;
+        crate::tags::add_picture(&path, data, "image/jpeg".into(), kind)
+    })
+    .await
 }
 
 #[tauri::command]

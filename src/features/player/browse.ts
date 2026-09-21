@@ -8,7 +8,7 @@ export function filterTracks(tracks: Track[], query: string): Track[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return tracks;
   return tracks.filter((track) => {
-    const hay = [track.title, track.artist, track.albumArtist, track.album, track.path]
+    const hay = [track.title, track.artist, track.albumArtist, track.album]
       .join(" ")
       .toLowerCase();
     return hay.includes(needle);

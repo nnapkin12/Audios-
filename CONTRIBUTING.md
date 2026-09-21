@@ -20,7 +20,7 @@ Tauri returns command errors as strings. Use `errorMessage()` from [`src/lib/for
 
 ## Player
 
-Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.rs`](src-tauri/src/player/engine.rs) (rodio + Symphonia). Queue order, repeat, and shuffle are pure logic in [`src-tauri/src/player/queue.rs`](src-tauri/src/player/queue.rs) and should stay unit-tested there.
+Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.rs`](src-tauri/src/player/engine.rs) (rodio + Symphonia). The graphic EQ wraps each decoder in [`src-tauri/src/eq.rs`](src-tauri/src/eq.rs) on that audio thread. Queue order, repeat, and shuffle are pure logic in [`src-tauri/src/player/queue.rs`](src-tauri/src/player/queue.rs) and should stay unit-tested there.
 
 ## Search
 
@@ -28,11 +28,11 @@ Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.
 
 ## Tags
 
-[`src-tauri/src/tags/mod.rs`](src-tauri/src/tags/mod.rs) writes through a temp file, then replaces the original. Do not write tags in place. Keep the editor format-aware: not every container has the same frames.
+[`src-tauri/src/tags/mod.rs`](src-tauri/src/tags/mod.rs) writes through a temp file, then replaces the original. Do not write tags in place. Keep the editor format-aware: not every container has the same frames. Cover search lists four YouTube thumbnails (`search_covers`) and `add_cover_from_url` fetches the JPEG with curl. Do not download audio for artwork.
 
 ## UI
 
-Chrome lives in `src/features/shell`. Stay on WebKit-safe CSS. The window is frameless and the UI fills the client area. Window buttons stay on the top right. Playlist pictures are JPEGs next to `state.json` in `playlist-covers/` (`{id}.jpg` custom, `{id}.auto.jpg` mosaic). Set a custom picture with the native file dialog and a path argument. Do not persist per-file resume offsets; leaving a track starts it at 0:00 next time.
+Chrome lives in `src/features/shell`. Stay on WebKit-safe CSS. The window is frameless and the UI fills the client area. Window buttons stay on the top right. Playlist pictures are JPEGs next to `state.json` in `playlist-covers/` (`{id}.jpg` custom, `{id}.auto.jpg` mosaic). Set a custom picture with the native file dialog and a path argument. Adding a folder to a playlist expands to songs. Do not persist per-file resume offsets; leaving a track starts it at 0:00 next time.
 
 ## Comments
 

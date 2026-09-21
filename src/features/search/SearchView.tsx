@@ -1,20 +1,33 @@
-import { useState, type FormEvent, type MouseEvent } from "react";
-import { Download, Play, Search } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { Download, Search } from "lucide-react";
+import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
 import { api, openExternal, pickSavePath } from "@/lib/api";
 import { errorMessage, safeFileName } from "@/lib/format";
-import type { MediaHit } from "@/lib/types";
+import type { MediaHit, Track } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 
 export function SearchView() {
   const setStatus = useAppStore((state) => state.setStatus);
   const applySnapshot = useAppStore((state) => state.applySnapshot);
-  const currentTitle = useAppStore((state) => state.snapshot?.current?.title ?? "");
+  const current = useAppStore((state) => state.snapshot?.current ?? null);
   const playing = useAppStore((state) => state.snapshot?.playing ?? false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MediaHit[]>([]);
   const [loading, setLoading] = useState(false);
-  const [playingUrl, setPlayingUrl] = useState<string | null>(null);
+  const [fetchingUrl, setFetchingUrl] = useState<string | null>(null);
   const [savingUrl, setSavingUrl] = useState<string | null>(null);
+  const playReq = useRef(0);
+  const fetchStartedPath = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!fetchingUrl) return;
+    const path = current?.path ?? null;
+    if (path === fetchStartedPath.current) return;
+    const id = videoIdFromUrl(fetchingUrl);
+    if (id && path?.includes(id)) return;
+    playReq.current += 1;
+    setFetchingUrl(null);
+  }, [current?.path, fetchingUrl]);
 
   async function onSearch(event: FormEvent) {
     event.preventDefault();
@@ -33,14 +46,29 @@ export function SearchView() {
   }
 
   async function playHit(hit: MediaHit) {
-    setPlayingUrl(hit.url);
+    if (fetchingUrl === hit.url) return;
+    if (hitIsCurrent(hit, current)) {
+      try {
+        applySnapshot(await api.toggle());
+      } catch (error) {
+        setStatus(errorMessage(error, "Could not control playback"));
+      }
+      return;
+    }
+    const gen = ++playReq.current;
+    fetchStartedPath.current = current?.path ?? null;
+    setFetchingUrl(hit.url);
     setStatus("Getting audio…", "info");
     try {
-      applySnapshot(await api.playMedia(hit.title, hit.url, hit.pageUrl));
+      const snapshot = await api.playMedia(hit.title, hit.url, hit.pageUrl);
+      if (gen !== playReq.current) return;
+      applySnapshot(snapshot);
       setStatus(null);
     } catch (error) {
-      setPlayingUrl(null);
+      if (gen !== playReq.current) return;
       setStatus(errorMessage(error, "Could not play"));
+    } finally {
+      if (gen === playReq.current) setFetchingUrl(null);
     }
   }
 
@@ -80,14 +108,16 @@ export function SearchView() {
     <section className="min-h-0 flex-1 overflow-auto px-8 py-6">
       <div className="mx-auto flex max-w-3xl flex-col gap-6">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-tight">Search</h1>
-          <p className="mt-1 text-[14px] font-medium text-app-muted">
-            Search lists YouTube titles and watch URLs. Play downloads a temp audio file and
-            deletes it when the track changes. Download keeps a copy.
+          <h1 className="text-[28px] font-semibold tracking-tight">Search</h1>
+          <p className="mt-2 max-w-2xl text-[15px] font-medium leading-6 text-app-muted">
+            Find songs and artists. Play starts right away. Save a copy if you want to keep it.
           </p>
         </div>
 
-        <form onSubmit={(event) => void onSearch(event)} className="flex gap-2">
+        <form
+          onSubmit={(event) => void onSearch(event)}
+          className="flex gap-2 rounded-xl border border-app-border bg-app-raised/80 p-3"
+        >
           <label className="relative min-w-0 flex-1">
             <Search
               size={16}
@@ -98,7 +128,7 @@ export function SearchView() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Song, artist, or link"
               autoFocus
-              className="w-full rounded-lg border border-app-border bg-app-raised py-2.5 pl-9 pr-3 text-[15px] text-app-text"
+              className="w-full rounded-lg border border-app-border bg-app py-2.5 pl-9 pr-3 text-[15px] text-app-text"
             />
           </label>
           <button
@@ -126,22 +156,27 @@ export function SearchView() {
 
         <ul className="flex flex-col gap-1">
           {results.map((hit) => {
-            const fetching = playingUrl === hit.url && !playing;
-            const active = playing && currentTitle === hit.title;
+            const fetching = fetchingUrl === hit.url;
+            const currentHit = hitIsCurrent(hit, current);
+            const showPause = currentHit && playing;
             return (
               <li key={`${hit.title}:${hit.url}`}>
                 <div
                   className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 ${
-                    fetching || active ? "bg-app-hover" : "hover:bg-app-hover/70"
+                    fetching || currentHit ? "bg-app-hover" : "hover:bg-app-hover/70"
                   }`}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3 px-1 py-1">
                     <button
                       type="button"
+                      title={showPause ? "Pause" : "Play"}
                       onClick={() => void playHit(hit)}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-app-raised text-app-text"
+                      className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-app-raised text-white"
                     >
-                      <Play size={16} fill="currentColor" />
+                      <ResultThumb url={hit.thumbnailUrl} />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/45">
+                        <PlayPauseIcon playing={showPause} size={16} />
+                      </span>
                     </button>
                     <div className="min-w-0 flex-1">
                       <button
@@ -152,7 +187,11 @@ export function SearchView() {
                         {hit.title}
                       </button>
                       <span className="block truncate text-[13px] font-medium text-app-muted">
-                        {fetching ? "Getting audio…" : active ? "Playing" : "Play"}
+                        {fetching
+                          ? "Loading…"
+                          : showPause
+                            ? "Playing"
+                            : (hit.channel ?? "Play")}
                       </span>
                       <button
                         type="button"
@@ -184,6 +223,37 @@ export function SearchView() {
   );
 }
 
+function ResultThumb({ url }: { url?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return <span className="block h-full w-full bg-app-hover" />;
+  }
+  return (
+    <img
+      src={url}
+      alt=""
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="h-full w-full object-cover"
+      loading="lazy"
+    />
+  );
+}
+
 function sourceUrl(hit: MediaHit): string {
   return hit.pageUrl || hit.url;
+}
+
+function videoIdFromUrl(url: string): string | null {
+  const watch = /[?&]v=([A-Za-z0-9_-]{11})/.exec(url);
+  if (watch) return watch[1];
+  const short = /youtu\.be\/([A-Za-z0-9_-]{11})/.exec(url);
+  return short?.[1] ?? null;
+}
+
+function hitIsCurrent(hit: MediaHit, track: Track | null): boolean {
+  if (!track) return false;
+  const id = videoIdFromUrl(hit.pageUrl || hit.url);
+  if (id && track.path.includes(id)) return true;
+  return track.album === "Search" && track.title === hit.title;
 }

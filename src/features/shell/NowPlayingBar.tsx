@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
 import {
   Maximize2,
-  Pause,
-  Play,
   Repeat,
   Repeat1,
   Shuffle,
@@ -11,16 +9,16 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
+import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
+import { TransportSeek } from "@/features/shell/SeekBar";
 import { api } from "@/lib/api";
-import { displayArtist, displayTitle, formatTime } from "@/lib/format";
+import { CoverThumb } from "@/lib/covers";
+import { displayArtist, displayTitle } from "@/lib/format";
 import type { RepeatMode } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 
 export function NowPlayingBar() {
   const snapshot = useAppStore((state) => state.snapshot);
-  const coverUrl = useAppStore((state) => state.coverUrl);
-  const position = useAppStore((state) => state.positionMs);
-  const duration = useAppStore((state) => state.durationMs);
   const setNowPlayingOpen = useAppStore((state) => state.setNowPlayingOpen);
   const current = snapshot?.current ?? null;
   const playing = snapshot?.playing ?? false;
@@ -37,8 +35,8 @@ export function NowPlayingBar() {
         className="flex min-w-0 items-center gap-3 text-left"
       >
         <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md bg-app-hover">
-          {coverUrl ? (
-            <img src={coverUrl} alt="" className="h-full w-full object-cover" />
+          {current ? (
+            <CoverThumb path={current.path} className="h-12 w-12 rounded-md" />
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-app-hover to-app" />
           )}
@@ -60,20 +58,28 @@ export function NowPlayingBar() {
             active={shuffle}
             onClick={() => void api.setShuffle(!shuffle).catch(() => undefined)}
           >
-            <Shuffle size={15} />
+            <Shuffle key={String(shuffle)} size={15} className="t-pop" />
           </IconButton>
-          <IconButton label="Previous" onClick={() => void api.previous().catch(() => undefined)}>
+          <IconButton
+            label="Previous"
+            nudge="prev"
+            onClick={() => void api.previous().catch(() => undefined)}
+          >
             <SkipBack size={16} />
           </IconButton>
           <button
             type="button"
             title={playing ? "Pause" : "Play"}
             onClick={() => void api.toggle().catch(() => undefined)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-app-play text-app-play-fg transition-transform hover:scale-[1.03]"
+            className="t-btn flex h-10 w-10 items-center justify-center rounded-full bg-app-play text-app-play-fg"
           >
-            {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
+            <PlayPauseIcon playing={playing} size={16} />
           </button>
-          <IconButton label="Next" onClick={() => void api.next().catch(() => undefined)}>
+          <IconButton
+            label="Next"
+            nudge="next"
+            onClick={() => void api.next().catch(() => undefined)}
+          >
             <SkipForward size={16} />
           </IconButton>
           <IconButton
@@ -81,23 +87,19 @@ export function NowPlayingBar() {
             active={repeat !== "off"}
             onClick={() => void api.setRepeat(nextRepeat(repeat)).catch(() => undefined)}
           >
-            {repeat === "one" ? <Repeat1 size={15} /> : <Repeat size={15} />}
+            {repeat === "one" ? (
+              <Repeat1 key="one" size={15} className="t-pop" />
+            ) : (
+              <Repeat key={repeat} size={15} className="t-pop" />
+            )}
           </IconButton>
         </div>
-        <div className="flex w-full max-w-[520px] items-center gap-2 text-[12px] font-semibold text-app-muted">
-          <span className="w-10 text-right tabular-nums">{formatTime(position)}</span>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(duration, 1)}
-            value={Math.min(position, duration)}
-            onChange={(event) => {
-              void api.seek(Number(event.target.value)).catch(() => undefined);
-            }}
-            className="bar-range w-full"
-          />
-          <span className="w-10 tabular-nums">{formatTime(duration)}</span>
-        </div>
+        <TransportSeek
+          tone="bar"
+          onSeek={(ms) => {
+            void api.seek(ms).catch(() => undefined);
+          }}
+        />
       </div>
 
       <div className="flex items-center justify-end gap-2">
@@ -134,11 +136,13 @@ function nextRepeat(mode: RepeatMode): RepeatMode {
 function IconButton({
   label,
   active,
+  nudge,
   onClick,
   children,
 }: {
   label: string;
   active?: boolean;
+  nudge?: "next" | "prev";
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -148,9 +152,9 @@ function IconButton({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-        active ? "text-app-accent" : "text-app-subtle hover:text-app-text"
-      }`}
+      className={`t-btn flex h-8 w-8 items-center justify-center rounded-md ${
+        nudge === "next" ? "t-btn-next" : nudge === "prev" ? "t-btn-prev" : ""
+      } ${active ? "text-app-accent" : "text-app-subtle hover:text-app-text"}`}
     >
       {children}
     </button>

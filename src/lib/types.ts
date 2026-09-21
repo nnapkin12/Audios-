@@ -1,6 +1,8 @@
 import type { CustomTheme } from "./theme";
+import type { EqState } from "./eq";
 
 export type { CustomTheme, ThemeColors } from "./theme";
+export type { EqBuiltin, EqState, EqUpdate, EqUserPreset } from "./eq";
 
 export type RepeatMode = "off" | "one" | "all";
 
@@ -25,12 +27,15 @@ export interface Appearance {
   theme: string;
   accent: string;
   customThemes: CustomTheme[];
+  minimizeMovement?: boolean;
 }
 
 export interface MediaHit {
   title: string;
   url: string;
   pageUrl?: string;
+  thumbnailUrl?: string;
+  channel?: string;
 }
 
 export interface LibraryChange {
@@ -72,6 +77,7 @@ export interface PlayerSnapshot {
   shuffle: boolean;
   replaygain: boolean;
   gapless: boolean;
+  eq?: EqState;
   root: string | null;
   tree: FolderNode | null;
   error: string | null;

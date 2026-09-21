@@ -1,3 +1,4 @@
+import type { EqUpdate, EqUserPreset } from "./eq";
 import type {
   Appearance,
   CoverArt,
@@ -42,7 +43,7 @@ export async function pickAudioFiles(): Promise<string[]> {
   const selected = await open({
     multiple: true,
     directory: false,
-    title: "Add audio files",
+    title: "Add songs",
     filters: [
       {
         name: "Audio",
@@ -67,13 +68,13 @@ export async function pickAudioFiles(): Promise<string[]> {
   return typeof selected === "string" ? [selected] : [];
 }
 
-export async function pickAudioFile(): Promise<string | null> {
+export async function pickAudioFile(title = "Play song"): Promise<string | null> {
   if (!isTauri()) return null;
   const { open } = await import("@tauri-apps/plugin-dialog");
   const selected = await open({
     multiple: false,
     directory: false,
-    title: "Open audio file",
+    title,
     filters: [
       {
         name: "Audio",
@@ -114,13 +115,13 @@ export async function pickImageFile(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
-export async function pickFolder(): Promise<string | null> {
+export async function pickFolder(title = "Add music"): Promise<string | null> {
   if (!isTauri()) return null;
   const { open } = await import("@tauri-apps/plugin-dialog");
   const selected = await open({
     multiple: false,
     directory: true,
-    title: "Open folder",
+    title,
   });
   return typeof selected === "string" ? selected : null;
 }
@@ -169,6 +170,9 @@ export const api = {
   setShuffle: (shuffle: boolean) => invoke<PlayerSnapshot>("set_shuffle", { shuffle }),
   setReplaygain: (enabled: boolean) => invoke<PlayerSnapshot>("set_replaygain", { enabled }),
   setGapless: (enabled: boolean) => invoke<PlayerSnapshot>("set_gapless", { enabled }),
+  setEq: (eq: EqUpdate) => invoke<PlayerSnapshot>("set_eq", { eq }),
+  saveCustomEq: (preset: EqUserPreset) => invoke<PlayerSnapshot>("save_custom_eq", { preset }),
+  deleteCustomEq: (id: string) => invoke<PlayerSnapshot>("delete_custom_eq", { id }),
   readTags: (path: string) => invoke<TagDoc>("read_tags", { path }),
   writeTags: (path: string, fields: TagFields) =>
     invoke<TagDoc>("write_tags", { path, fields }),
@@ -203,11 +207,16 @@ export const api = {
   getAppearance: () => invoke<Appearance>("get_appearance"),
   setAppearance: (theme: string, accent: string) =>
     invoke<Appearance>("set_appearance", { theme, accent }),
+  setMinimizeMovement: (enabled: boolean) =>
+    invoke<Appearance>("set_minimize_movement", { enabled }),
   saveCustomTheme: (theme: CustomTheme) =>
     invoke<Appearance>("save_custom_theme", { theme }),
   deleteCustomTheme: (id: string) => invoke<Appearance>("delete_custom_theme", { id }),
   searchStream: (query: string) => invoke<MediaHit>("search_stream", { query }),
   searchMedia: (query: string) => invoke<MediaHit[]>("search_media", { query }),
+  searchCovers: (query: string) => invoke<MediaHit[]>("search_covers", { query }),
+  addCoverFromUrl: (path: string, url: string, kind: string) =>
+    invoke<TagDoc>("add_cover_from_url", { path, url, kind }),
   playMedia: (title: string, url: string, pageUrl?: string) =>
     invoke<PlayerSnapshot>("play_media", { title, url, pageUrl: pageUrl ?? null }),
   saveMedia: (url: string, dest: string, pageUrl?: string) =>

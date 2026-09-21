@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 export function VirtualList<T>({
   items,
   rowHeight,
-  overscan = 8,
+  overscan = 6,
   className,
   renderRow,
   getKey,
@@ -18,6 +18,8 @@ export function VirtualList<T>({
   onPointerLeave?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const pending = useRef(0);
+  const topRef = useRef(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [height, setHeight] = useState(0);
 
@@ -31,6 +33,8 @@ export function VirtualList<T>({
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => () => cancelAnimationFrame(pending.current), []);
+
   const start = Math.max(0, Math.floor(scrollTop / rowHeight) - overscan);
   const visible = Math.ceil((height || 1) / rowHeight) + overscan * 2;
   const end = Math.min(items.length, start + visible);
@@ -41,7 +45,14 @@ export function VirtualList<T>({
       ref={ref}
       className={className}
       onPointerLeave={onPointerLeave}
-      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      onScroll={(event) => {
+        topRef.current = event.currentTarget.scrollTop;
+        if (pending.current) return;
+        pending.current = requestAnimationFrame(() => {
+          pending.current = 0;
+          setScrollTop(topRef.current);
+        });
+      }}
     >
       <div style={{ height: items.length * rowHeight, position: "relative" }}>
         {slice.map((item, offset) => {

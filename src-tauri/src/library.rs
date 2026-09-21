@@ -13,7 +13,7 @@ pub fn add(store: &Store, path: String) -> AppResult<(Vec<String>, String)> {
         return Err(AppError::msg(format!("missing path: {}", path.display())));
     }
     if !path.is_dir() {
-        return Err(AppError::msg("add a folder to the library"));
+        return Err(AppError::msg("Add a music folder"));
     }
     let key = normalize(&path);
     store.update(|data| {

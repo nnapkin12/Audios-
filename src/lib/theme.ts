@@ -64,6 +64,16 @@ export const THEME_COLOR_FIELDS: Array<{
   { key: "accentDim", label: "Accent dim", css: "--app-accent-dim" },
 ];
 
+export const SIMPLE_THEME_FIELDS = [
+  { key: "app", label: "Background" },
+  { key: "text", label: "Text" },
+  { key: "accent", label: "Accent" },
+  { key: "play", label: "Play button" },
+  { key: "danger", label: "Danger" },
+] as const;
+
+export type SimpleThemeKey = (typeof SIMPLE_THEME_FIELDS)[number]["key"];
+
 export const DEFAULT_THEME_COLORS: ThemeColors = {
   frame: "#141414",
   app: "#1e1e1e",
@@ -126,10 +136,64 @@ export function rgbToHex(value: string): string {
   );
 }
 
+function hexChannels(hex: string): [number, number, number] {
+  const n = Number.parseInt(normalizeHex(hex).slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
 export function hexToRgb(hex: string): string {
-  const value = normalizeHex(hex).slice(1);
-  const n = Number.parseInt(value, 16);
-  return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
+  return hexChannels(hex).join(" ");
+}
+
+export function mixHex(a: string, b: string, amount: number): string {
+  const t = Math.min(1, Math.max(0, amount));
+  const [ar, ag, ab] = hexChannels(a);
+  const [br, bg, bb] = hexChannels(b);
+  const channel = (from: number, to: number) => Math.round(from + (to - from) * t);
+  return normalizeHex(
+    `#${[channel(ar, br), channel(ag, bg), channel(ab, bb)]
+      .map((n) => n.toString(16).padStart(2, "0"))
+      .join("")}`,
+  );
+}
+
+function isLight(hex: string): boolean {
+  const [r, g, b] = hexChannels(hex);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 140;
+}
+
+export function applySimpleThemeColor(
+  colors: ThemeColors,
+  key: SimpleThemeKey,
+  value: string,
+): ThemeColors {
+  const hex = normalizeHex(value);
+  const next = cloneThemeColors(colors);
+  if (key === "app") {
+    const light = isLight(hex);
+    const ink = light ? "#000000" : "#ffffff";
+    next.app = hex;
+    next.frame = mixHex(hex, "#000000", light ? 0.12 : 0.22);
+    next.raised = mixHex(hex, "#ffffff", light ? 0.16 : 0.05);
+    next.bar = mixHex(hex, "#000000", light ? 0.1 : 0.36);
+    next.barLine = mixHex(hex, ink, light ? 0.32 : 0.28);
+    next.hover = mixHex(hex, ink, 0.08);
+    next.border = mixHex(hex, ink, light ? 0.16 : 0.14);
+    next.line = mixHex(hex, ink, 0.1);
+  } else if (key === "text") {
+    next.text = hex;
+    next.subtle = mixHex(hex, next.app, 0.18);
+    next.muted = mixHex(hex, next.app, 0.42);
+  } else if (key === "accent") {
+    next.accent = hex;
+    next.accentDim = mixHex(hex, "#000000", 0.38);
+  } else if (key === "play") {
+    next.play = hex;
+    next.playFg = isLight(hex) ? "#141414" : "#f2f2f2";
+  } else {
+    next.danger = hex;
+  }
+  return next;
 }
 
 export function cloneThemeColors(colors: ThemeColors): ThemeColors {

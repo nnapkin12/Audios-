@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
-import { ImagePlus, Save, Trash2, Upload, X } from "lucide-react";
-import { api, pickAudioFile, pickFolder, pickSavePath } from "@/lib/api";
-import { errorMessage, formatBytes, formatTime, pictureSrc } from "@/lib/format";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ImagePlus, Save, Search, Trash2, Upload, X } from "lucide-react";
+import { api, isTauri, pickAudioFile, pickFolder, pickSavePath } from "@/lib/api";
+import { displayTitle, errorMessage, formatBytes, formatTime, pictureSrc } from "@/lib/format";
 import {
   COMMON_FIELDS,
   EMPTY_FIELDS,
   EXTENDED_FIELDS,
+  type MediaHit,
   type TagDoc,
   type TagFields,
 } from "@/lib/types";
@@ -24,6 +25,14 @@ export function TagsView() {
   const [customValue, setCustomValue] = useState("");
   const [pictureKind, setPictureKind] = useState("front");
   const [busy, setBusy] = useState(false);
+  const [coverHits, setCoverHits] = useState<MediaHit[]>([]);
+  const [coverLoading, setCoverLoading] = useState(false);
+  const [coverApplying, setCoverApplying] = useState<string | null>(null);
+  const coverReq = useRef(0);
+  const [dropHot, setDropHot] = useState(false);
+  const zoneRef = useRef<HTMLDivElement>(null);
+  const dropLock = useRef(0);
+  const dropHotRef = useRef(false);
 
   const dirty = useMemo(
     () => JSON.stringify(normalize(doc)) !== JSON.stringify(fields),
@@ -32,6 +41,9 @@ export function TagsView() {
 
   async function loadPath(path: string) {
     setBusy(true);
+    coverReq.current += 1;
+    setCoverHits([]);
+    setCoverApplying(null);
     try {
       const next = await api.readTags(path);
       setDoc(next);
@@ -45,6 +57,43 @@ export function TagsView() {
     }
   }
 
+  async function searchCovers() {
+    if (!doc) return;
+    const query = coverQuery(fields, doc.path);
+    if (!query) return;
+    const gen = ++coverReq.current;
+    setCoverLoading(true);
+    setStatus(null);
+    try {
+      const hits = (await api.searchCovers(query)).slice(0, 4);
+      if (gen !== coverReq.current) return;
+      setCoverHits(hits);
+      if (hits.length === 0) setStatus("No artwork found");
+    } catch (error) {
+      if (gen !== coverReq.current) return;
+      setCoverHits([]);
+      setStatus(errorMessage(error, "Couldn't find artwork"));
+    } finally {
+      if (gen === coverReq.current) setCoverLoading(false);
+    }
+  }
+
+  async function useCover(hit: MediaHit) {
+    if (!doc || !hit.thumbnailUrl) return;
+    setCoverApplying(hit.url);
+    setBusy(true);
+    try {
+      const next = await api.addCoverFromUrl(doc.path, hit.thumbnailUrl, pictureKind);
+      setDoc(next);
+      setStatus("Artwork added", "info");
+    } catch (error) {
+      setStatus(errorMessage(error, "Couldn't add artwork"));
+    } finally {
+      setCoverApplying(null);
+      setBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (!tagFocusPath) return;
     void loadPath(tagFocusPath);
@@ -52,24 +101,112 @@ export function TagsView() {
   }, [tagFocusPath, setTagFocusPath]);
 
   async function openFile() {
-    const path = await pickAudioFile();
+    const path = await pickAudioFile("Open file");
     if (path) await loadPath(path);
   }
 
   async function openFolder() {
-    const folder = await pickFolder();
+    const folder = await pickFolder("Open folder");
     if (!folder) return;
     setBusy(true);
     try {
       const listed = await api.listAudioPaths(folder);
+      if (listed.length === 0) {
+        setStatus("No audio files in that folder");
+        return;
+      }
       setPaths(listed);
-      if (listed[0]) await loadPath(listed[0]);
+      await loadPath(listed[0]);
     } catch (error) {
       setStatus(errorMessage(error, "Could not open folder"));
     } finally {
       setBusy(false);
     }
   }
+
+  async function loadDropped(paths: string[]) {
+    const unique = [...new Set(paths.map((path) => path.trim()).filter(Boolean))];
+    if (unique.length === 0) return;
+    setBusy(true);
+    try {
+      const listed: string[] = [];
+      for (const path of unique) {
+        listed.push(...(await api.listAudioPaths(path)));
+      }
+      const next = [...new Set(listed)];
+      if (next.length === 0) {
+        setStatus("No audio files in that drop");
+        return;
+      }
+      setPaths((current) => {
+        const merged = [...current];
+        for (const path of next) {
+          if (!merged.includes(path)) merged.push(path);
+        }
+        return merged;
+      });
+      await loadPath(next[0]);
+    } catch (error) {
+      setStatus(errorMessage(error, "Could not open dropped files"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function setHot(value: boolean) {
+    dropHotRef.current = value;
+    setDropHot(value);
+  }
+
+  function takeDrop(paths: string[]) {
+    const now = Date.now();
+    if (now - dropLock.current < 400) return;
+    dropLock.current = now;
+    setHot(false);
+    void loadDropped(paths);
+  }
+
+  useEffect(() => {
+    if (doc || !isTauri()) return;
+    let gone = false;
+    let stop: (() => void) | undefined;
+    void (async () => {
+      const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+      const unlisten = await getCurrentWebview().onDragDropEvent((event) => {
+        if (gone) return;
+        const payload = event.payload;
+        const zone = zoneRef.current;
+        if (payload.type === "leave") {
+          setHot(false);
+          return;
+        }
+        if (!zone) return;
+        if (payload.type === "over" || payload.type === "enter") {
+          const box = zone.getBoundingClientRect();
+          const scale = window.devicePixelRatio || 1;
+          const x = payload.position.x / scale;
+          const y = payload.position.y / scale;
+          setHot(x >= box.left && x <= box.right && y >= box.top && y <= box.bottom);
+          return;
+        }
+        if (payload.type === "drop") {
+          const box = zone.getBoundingClientRect();
+          const scale = window.devicePixelRatio || 1;
+          const x = payload.position.x / scale;
+          const y = payload.position.y / scale;
+          const inside = x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+          if (inside || dropHotRef.current) takeDrop(payload.paths);
+          else setHot(false);
+        }
+      });
+      if (gone) unlisten();
+      else stop = unlisten;
+    })();
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  }, [doc]);
 
   async function saveCurrent() {
     if (!doc) return;
@@ -116,8 +253,16 @@ export function TagsView() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1">
-      <div className="flex w-[280px] shrink-0 flex-col border-r border-app-line">
+    <section className="flex min-h-0 flex-1 flex-col">
+      <div className="px-8 pt-6 pb-4">
+        <h1 className="text-[28px] font-semibold tracking-tight">Metadata Editor</h1>
+        <p className="mt-2 max-w-3xl text-[15px] font-medium leading-6 text-app-muted">
+          Edit Common fields, ReplayGain, MusicBrainz IDs, Lyrics, artwork, custom frames. Empty
+          fields clear any existing tags, make sure you fill everything necessary out.
+        </p>
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <div className="flex w-[280px] shrink-0 flex-col border-r border-app-line">
         <div className="flex items-center justify-between px-3 py-2">
           <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">Files</h2>
           <div className="flex gap-1">
@@ -154,7 +299,7 @@ export function TagsView() {
                       doc?.path === path ? "text-app-text" : "text-app-subtle"
                     }`}
                   >
-                    {path.split(/[\\/]/).pop()}
+                    {displayTitle("", path)}
                   </button>
                   <button
                     type="button"
@@ -181,13 +326,36 @@ export function TagsView() {
         </div>
       </div>
 
-      <div className="min-w-0 flex-1 overflow-auto px-5 py-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col px-5 py-4">
         {!doc ? (
-          <div className="rounded-xl border border-dashed border-app-border bg-app-raised/60 px-4 py-6 text-[13px] leading-6 text-app-muted">
-            The editor writes every tag lofty understands: common fields, ReplayGain, MusicBrainz IDs, lyrics, artwork, and custom frames. Empty fields clear the tag.
+          <div
+            ref={zoneRef}
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setHot(true);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setHot(true);
+            }}
+            onDragLeave={() => setHot(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              const paths: string[] = [];
+              for (const file of Array.from(event.dataTransfer.files)) {
+                const path = (file as File & { path?: string }).path;
+                if (path) paths.push(path);
+              }
+              takeDrop(paths);
+            }}
+            className={`flex min-h-[280px] flex-1 items-center justify-center rounded-xl border-2 border-dashed px-6 py-16 text-center text-[15px] font-medium leading-6 ${
+              dropHot ? "drop-ready" : "border-app-border bg-app-raised/60 text-app-muted"
+            }`}
+          >
+            Drop a file or folder here
           </div>
         ) : (
-          <div className="mx-auto flex max-w-4xl flex-col gap-5 pb-16">
+          <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-5 overflow-auto pb-16">
             <header className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-[12px] text-app-muted">
@@ -274,8 +442,52 @@ export function TagsView() {
                       }}
                     />
                   </label>
+                  <button
+                    type="button"
+                    disabled={busy || coverLoading}
+                    onClick={() => void searchCovers()}
+                    className="flex items-center gap-1 rounded-md bg-white/[0.06] px-2 py-1 text-app-subtle disabled:opacity-40"
+                  >
+                    <Search size={13} />
+                    {coverLoading ? "Searching…" : "Find artwork"}
+                  </button>
                 </div>
               </div>
+              {coverHits.length > 0 ? (
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {coverHits.map((hit) => (
+                    <figure
+                      key={hit.url}
+                      className="overflow-hidden rounded-lg border border-app-border"
+                    >
+                      {hit.thumbnailUrl ? (
+                        <img
+                          src={hit.thumbnailUrl}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="h-24 w-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-24 bg-app-hover" />
+                      )}
+                      <figcaption className="flex items-center justify-between gap-1 px-2 py-1.5">
+                        <span className="min-w-0 truncate text-[11px] text-app-muted" title={hit.title}>
+                          {hit.title}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={busy || !hit.thumbnailUrl}
+                          onClick={() => void useCover(hit)}
+                          className="shrink-0 text-[11px] font-semibold text-app-accent disabled:opacity-40"
+                        >
+                          {coverApplying === hit.url ? "Adding…" : "Use"}
+                        </button>
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
               {doc.pictures.length === 0 ? (
                 <p className="text-[12px] text-app-muted">No embedded pictures.</p>
               ) : (
@@ -386,6 +598,7 @@ export function TagsView() {
           </div>
         )}
       </div>
+      </div>
     </section>
   );
 }
@@ -436,6 +649,14 @@ function FieldCard({
       </div>
     </section>
   );
+}
+
+function coverQuery(fields: TagFields, path: string): string {
+  const title = fields.title.trim();
+  const artist = (fields.artists || fields.albumArtist).trim();
+  if (title && artist) return `${artist} ${title}`;
+  if (title) return title;
+  return displayTitle("", path);
 }
 
 function imageMime(file: File): string {

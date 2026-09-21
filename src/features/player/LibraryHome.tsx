@@ -11,9 +11,7 @@ export function LibraryHome() {
       />
       <h1 className="mt-8 text-[42px] font-semibold tracking-tight text-app-text">Audios!</h1>
       <p className="mt-3 max-w-lg text-center text-[15px] font-medium leading-6 text-app-muted">
-        Welcome to Audios! Open files or folders to play your media, or use the search tab to find
-        something and play it. There is also a separate tab to edit metadata on your files (and a
-        settings tab).{" "}
+        Your music, playlists, and search — all in one place.{" "}
         <button
           type="button"
           onClick={() => void openExternal(GITHUB_URL)}

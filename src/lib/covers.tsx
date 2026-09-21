@@ -3,31 +3,51 @@ import { ListMusic } from "lucide-react";
 import { api, isTauri } from "./api";
 import { pictureSrc } from "./format";
 
+const THUMB_CAP = 80;
+const PLAYLIST_CAP = 24;
 const cache = new Map<string, string | null>();
 const inflight = new Map<string, Promise<string | null>>();
+
+function lruGet<T>(map: Map<string, T>, key: string): T | undefined {
+  const hit = map.get(key);
+  if (hit === undefined) return undefined;
+  map.delete(key);
+  map.set(key, hit);
+  return hit;
+}
+
+function lruSet<T>(map: Map<string, T>, key: string, value: T, cap: number): void {
+  if (map.has(key)) map.delete(key);
+  map.set(key, value);
+  while (map.size > cap) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
 
 export function cachedCover(path: string): string | null | undefined {
   return cache.has(path) ? cache.get(path) ?? null : undefined;
 }
 
 export function loadCoverThumb(path: string): Promise<string | null> {
-  const hit = cache.get(path);
+  const hit = lruGet(cache, path);
   if (hit !== undefined) return Promise.resolve(hit);
   const pending = inflight.get(path);
   if (pending) return pending;
   if (!isTauri()) {
-    cache.set(path, null);
+    lruSet(cache, path, null, THUMB_CAP);
     return Promise.resolve(null);
   }
   const request = api
     .coverThumb(path)
     .then((cover) => {
       const url = cover ? pictureSrc(cover.mime, cover.dataBase64) : null;
-      cache.set(path, url);
+      lruSet(cache, path, url, THUMB_CAP);
       return url;
     })
     .catch(() => {
-      cache.set(path, null);
+      lruSet(cache, path, null, THUMB_CAP);
       return null;
     })
     .finally(() => {
@@ -89,23 +109,23 @@ export function dropPlaylistCover(id: string): void {
 }
 
 function loadPlaylistCover(id: string): Promise<string | null> {
-  const hit = playlistCache.get(id);
+  const hit = lruGet(playlistCache, id);
   if (hit !== undefined) return Promise.resolve(hit);
   const pending = playlistInflight.get(id);
   if (pending) return pending;
   if (!isTauri()) {
-    playlistCache.set(id, null);
+    lruSet(playlistCache, id, null, PLAYLIST_CAP);
     return Promise.resolve(null);
   }
   const request = api
     .playlistCover(id)
     .then((cover) => {
       const url = cover ? pictureSrc(cover.mime, cover.dataBase64) : null;
-      playlistCache.set(id, url);
+      lruSet(playlistCache, id, url, PLAYLIST_CAP);
       return url;
     })
     .catch(() => {
-      playlistCache.set(id, null);
+      lruSet(playlistCache, id, null, PLAYLIST_CAP);
       return null;
     })
     .finally(() => {
@@ -118,9 +138,11 @@ function loadPlaylistCover(id: string): Promise<string | null> {
 export function PlaylistCover({
   id,
   className,
+  iconSize = 16,
 }: {
   id: string;
   className?: string;
+  iconSize?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [src, setSrc] = useState<string | null | undefined>(() =>
@@ -155,7 +177,7 @@ export function PlaylistCover({
       {src ? (
         <img src={src} alt="" className="h-full w-full object-cover" />
       ) : (
-        <ListMusic size={16} className="text-app-accent" />
+        <ListMusic size={iconSize} className="text-app-accent" />
       )}
     </div>
   );

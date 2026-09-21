@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use rodio::{Decoder, OutputStream, Sink, Source};
 
+use crate::eq::{EqParams, EqShared, EqSource};
 use crate::error::{AppError, AppResult};
 
 pub trait PlayerEngine: Send + Sync {
@@ -20,6 +21,7 @@ pub trait PlayerEngine: Send + Sync {
     fn position_ms(&self) -> u64;
     fn duration_ms(&self) -> u64;
     fn set_volume(&self, volume: f64) -> AppResult<()>;
+    fn set_eq(&self, params: EqParams) -> AppResult<()>;
     fn set_gapless_next(&self, path: Option<&Path>) -> AppResult<()>;
     fn is_playing(&self) -> bool;
     fn queued_sources(&self) -> usize;
@@ -33,6 +35,7 @@ enum Command {
     Stop(Sender<AppResult<()>>),
     Seek(u64, Sender<AppResult<()>>),
     SetVolume(f64, Sender<AppResult<()>>),
+    SetEq(EqParams, Sender<AppResult<()>>),
     Append(PathBuf, Sender<AppResult<()>>),
 }
 
@@ -47,6 +50,7 @@ struct Shared {
 pub struct RodioEngine {
     tx: Sender<Command>,
     shared: Arc<Shared>,
+    eq: Arc<EqShared>,
 }
 
 impl RodioEngine {
@@ -59,12 +63,14 @@ impl RodioEngine {
             empty: AtomicBool::new(true),
             playing: AtomicBool::new(false),
         });
+        let eq = Arc::new(EqShared::default());
         let thread_shared = Arc::clone(&shared);
+        let thread_eq = Arc::clone(&eq);
         std::thread::Builder::new()
             .name("audios-rodio".into())
-            .spawn(move || audio_thread(rx, thread_shared))
+            .spawn(move || audio_thread(rx, thread_shared, thread_eq))
             .expect("audio thread");
-        Self { tx, shared }
+        Self { tx, shared, eq }
     }
 
     fn send(&self, build: impl FnOnce(Sender<AppResult<()>>) -> Command) -> AppResult<()> {
@@ -110,6 +116,16 @@ impl PlayerEngine for RodioEngine {
         self.send(|reply| Command::SetVolume(volume, reply))
     }
 
+    fn set_eq(&self, params: EqParams) -> AppResult<()> {
+        self.eq.set(params.clone());
+        let (tx, rx) = mpsc::channel();
+        if self.tx.send(Command::SetEq(params, tx)).is_err() {
+            return Ok(());
+        }
+        let _ = rx.recv();
+        Ok(())
+    }
+
     fn set_gapless_next(&self, path: Option<&Path>) -> AppResult<()> {
         let Some(path) = path else {
             return Ok(());
@@ -130,7 +146,7 @@ impl PlayerEngine for RodioEngine {
     }
 }
 
-fn audio_thread(rx: mpsc::Receiver<Command>, shared: Arc<Shared>) {
+fn audio_thread(rx: mpsc::Receiver<Command>, shared: Arc<Shared>, eq: Arc<EqShared>) {
     let Ok((_stream, handle)) = OutputStream::try_default() else {
         while let Ok(command) = rx.recv() {
             reply_err(command, AppError::msg("no audio output device"));
@@ -147,7 +163,7 @@ fn audio_thread(rx: mpsc::Receiver<Command>, shared: Arc<Shared>) {
 
     loop {
         match rx.recv_timeout(Duration::from_millis(40)) {
-            Ok(command) => handle_command(&sink, &shared, command),
+            Ok(command) => handle_command(&sink, &shared, &eq, command),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
@@ -155,10 +171,10 @@ fn audio_thread(rx: mpsc::Receiver<Command>, shared: Arc<Shared>) {
     }
 }
 
-fn handle_command(sink: &Sink, shared: &Shared, command: Command) {
+fn handle_command(sink: &Sink, shared: &Shared, eq: &Arc<EqShared>, command: Command) {
     match command {
         Command::SetUri(path, reply) => {
-            let _ = reply.send(load_into(sink, shared, &path, true));
+            let _ = reply.send(load_into(sink, shared, eq, &path, true));
         }
         Command::Play(reply) => {
             sink.play();
@@ -185,13 +201,23 @@ fn handle_command(sink: &Sink, shared: &Shared, command: Command) {
             sink.set_volume(volume.clamp(0.0, 1.5) as f32);
             let _ = reply.send(Ok(()));
         }
+        Command::SetEq(params, reply) => {
+            eq.set(params);
+            let _ = reply.send(Ok(()));
+        }
         Command::Append(path, reply) => {
-            let _ = reply.send(load_into(sink, shared, &path, false));
+            let _ = reply.send(load_into(sink, shared, eq, &path, false));
         }
     }
 }
 
-fn load_into(sink: &Sink, shared: &Shared, path: &Path, replace: bool) -> AppResult<()> {
+fn load_into(
+    sink: &Sink,
+    shared: &Shared,
+    eq: &Arc<EqShared>,
+    path: &Path,
+    replace: bool,
+) -> AppResult<()> {
     let decoder = decoder_for(path)?;
     let duration = decoder
         .total_duration()
@@ -203,7 +229,8 @@ fn load_into(sink: &Sink, shared: &Shared, path: &Path, replace: bool) -> AppRes
         shared.duration_ms.store(duration, Ordering::Relaxed);
         shared.position_ms.store(0, Ordering::Relaxed);
     }
-    sink.append(decoder);
+    // Decode → EQ Source (float biquads) → sink. Volume / ReplayGain stay on the sink.
+    sink.append(EqSource::new(decoder, Arc::clone(eq)));
     Ok(())
 }
 
@@ -248,6 +275,7 @@ fn reply_err(command: Command, error: AppError) {
         | Command::Stop(reply)
         | Command::Seek(_, reply)
         | Command::SetVolume(_, reply)
+        | Command::SetEq(_, reply)
         | Command::Append(_, reply) => {
             let _ = reply.send(Err(error));
         }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
+import { EqPanel } from "@/features/settings/EqPanel";
 import { ThemeBuilder } from "@/features/settings/ThemeBuilder";
 import { api, openExternal } from "@/lib/api";
 import { errorMessage } from "@/lib/format";
@@ -19,7 +20,9 @@ export function SettingsView() {
   const theme = useAppStore((state) => state.theme);
   const accent = useAppStore((state) => state.accent);
   const customThemes = useAppStore((state) => state.customThemes);
+  const minimizeMovement = useAppStore((state) => state.minimizeMovement);
   const setAppearance = useAppStore((state) => state.setAppearance);
+  const setMinimizeMovement = useAppStore((state) => state.setMinimizeMovement);
   const setStatus = useAppStore((state) => state.setStatus);
   const [builder, setBuilder] = useState<CustomTheme | "new" | null>(null);
 
@@ -63,7 +66,7 @@ export function SettingsView() {
     <section className="min-h-0 flex-1 overflow-auto px-8 py-6">
       <div className="mx-auto flex max-w-3xl flex-col gap-8">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-tight">Settings</h1>
+          <h1 className="text-[28px] font-semibold tracking-tight">Settings</h1>
         </div>
 
         <section className="rounded-xl border border-app-border bg-app-raised/80 p-5">
@@ -148,11 +151,28 @@ export function SettingsView() {
             />
             <Toggle
               label="Gapless playback"
-              hint="Start the next file before the current one ends."
+              hint="Start the next song before this one ends."
               checked={snapshot?.gapless ?? true}
               onChange={(checked) => void api.setGapless(checked)}
             />
+            <EqPanel />
           </div>
+        </section>
+
+        <section className="rounded-xl border border-app-border bg-app-raised/80 p-5">
+          <h2 className="mb-4 text-[16px] font-semibold">Interface</h2>
+          <Toggle
+            label="Minimize movement"
+            hint="Fewer animations, lower GPU use."
+            checked={minimizeMovement}
+            onChange={(checked) => {
+              setMinimizeMovement(checked);
+              void api.setMinimizeMovement(checked).catch((error) => {
+                setMinimizeMovement(!checked);
+                setStatus(errorMessage(error, "Could not save setting"));
+              });
+            }}
+          />
         </section>
 
         <section className="rounded-xl border border-app-border bg-app-raised/80 p-5">
@@ -183,7 +203,7 @@ export function SettingsView() {
         </section>
 
         <section className="rounded-xl border border-app-border bg-app-raised/80 p-5">
-          <h2 className="mb-2 text-[16px] font-semibold">Library folders</h2>
+          <h2 className="mb-2 text-[16px] font-semibold">Library</h2>
           {libraryRoots.length === 0 ? (
             <p className="text-[15px] text-app-subtle">None yet</p>
           ) : (

@@ -41,6 +41,10 @@ pub struct MediaHit {
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumbnail_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
 }
 
 pub fn search_stream(query: &str) -> AppResult<MediaHit> {
@@ -51,6 +55,8 @@ pub fn search_stream(query: &str) -> AppResult<MediaHit> {
         title: hit.title,
         url: stream,
         page_url: Some(hit.url),
+        thumbnail_url: hit.thumbnail_url,
+        channel: hit.channel,
     })
 }
 
@@ -63,6 +69,81 @@ pub fn search_media(query: &str) -> AppResult<Vec<MediaHit>> {
         }
     }
     Err(AppError::msg("no search results"))
+}
+
+/// Metadata-only cover search. Four thumbnails, no audio download.
+pub fn search_covers(query: &str) -> AppResult<Vec<MediaHit>> {
+    let query = clean_query(query)?;
+    for target in cover_query_variants(&query) {
+        let mut hits = flat_search(&target)?;
+        hits.retain(|hit| hit.thumbnail_url.is_some());
+        hits.truncate(4);
+        if !hits.is_empty() {
+            return Ok(hits);
+        }
+    }
+    Err(AppError::msg("no artwork found"))
+}
+
+pub fn fetch_cover_image(url: &str) -> AppResult<Vec<u8>> {
+    if !is_allowed_cover_url(url) {
+        return Err(AppError::msg("that image can't be used"));
+    }
+    let output = spawn_tool(find_curl()?)
+        .args([
+            "-fsSL",
+            "--max-time",
+            "20",
+            "--max-filesize",
+            "2097152",
+            "-A",
+            "Mozilla/5.0",
+            url,
+        ])
+        .output()
+        .map_err(|error| AppError::msg(format!("could not run curl: {error}")))?;
+    if !output.status.success() {
+        return Err(AppError::msg("couldn't download that image"));
+    }
+    let bytes = output.stdout;
+    if bytes.len() < 32 || bytes.len() > 2_097_152 {
+        return Err(AppError::msg("that image is too large"));
+    }
+    if crate::tags::sniff_image_mime(&bytes).is_none() {
+        return Err(AppError::msg("that file isn't an image"));
+    }
+    Ok(bytes)
+}
+
+pub fn is_allowed_cover_url(url: &str) -> bool {
+    let url = url.trim();
+    if !url.starts_with("https://") || url.len() > 500 {
+        return false;
+    }
+    if url
+        .bytes()
+        .any(|byte| byte < b' ' || byte == b'\\' || byte == b'\'' || byte == b'"')
+    {
+        return false;
+    }
+    let host = url
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .split('@')
+        .next_back()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    host == "i.ytimg.com"
+        || host == "img.youtube.com"
+        || host == "yt3.ggpht.com"
+        || host == "yt3.googleusercontent.com"
+        || (host.starts_with('i') && host.ends_with(".ytimg.com"))
 }
 
 pub fn play_source<'a>(url: &'a str, page_url: Option<&'a str>) -> &'a str {
@@ -690,7 +771,38 @@ fn hit_from_value(value: &Value) -> Option<MediaHit> {
     Some(MediaHit {
         title: title.to_string(),
         url: url.clone(),
-        page_url: Some(url),
+        page_url: Some(url.clone()),
+        thumbnail_url: thumbnail_url_for(&url, value),
+        channel: text_field(value, &["channel", "uploader", "artist"]),
+    })
+}
+
+fn thumbnail_url_for(url: &str, value: &Value) -> Option<String> {
+    if let Some(id) = video_id_from_url(url) {
+        return Some(format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg"));
+    }
+    value
+        .get("thumbnails")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items.iter().rev().find_map(|item| {
+                item.get("url")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|thumb| !thumb.is_empty())
+                    .map(str::to_string)
+            })
+        })
+}
+
+fn text_field(value: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        value
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(str::to_string)
     })
 }
 
@@ -743,6 +855,19 @@ fn list_query_variants(query: &str) -> Vec<String> {
     let stripped = strip_search_noise(query);
     if stripped != query {
         add_search(&mut queries, &stripped, 8);
+    }
+    queries
+}
+
+pub fn cover_query_variants(query: &str) -> Vec<String> {
+    if is_url(query) {
+        return Vec::new();
+    }
+    let mut queries = Vec::new();
+    add_search(&mut queries, query, 4);
+    let stripped = strip_search_noise(query);
+    if stripped != query {
+        add_search(&mut queries, &stripped, 4);
     }
     queries
 }
@@ -1111,6 +1236,8 @@ mod tests {
                 title: "Example Song".into(),
                 url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".into(),
                 page_url: Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ".into()),
+                thumbnail_url: Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg".into()),
+                channel: None,
             }]
         );
     }
@@ -1120,7 +1247,7 @@ mod tests {
         let value = json!({
             "_type": "playlist",
             "entries": [
-                { "id": "aaaaaaaaaaa", "title": "One", "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa" },
+                { "id": "aaaaaaaaaaa", "title": "One", "url": "https://www.youtube.com/watch?v=aaaaaaaaaaa", "channel": "Artist One" },
                 null,
                 { "id": "bbbbbbbbbbb", "title": "Two", "webpage_url": "https://www.youtube.com/watch?v=bbbbbbbbbbb" },
                 { "title": "  ", "url": "https://www.youtube.com/watch?v=3" }
@@ -1133,11 +1260,15 @@ mod tests {
                     title: "One".into(),
                     url: "https://www.youtube.com/watch?v=aaaaaaaaaaa".into(),
                     page_url: Some("https://www.youtube.com/watch?v=aaaaaaaaaaa".into()),
+                    thumbnail_url: Some("https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg".into()),
+                    channel: Some("Artist One".into()),
                 },
                 MediaHit {
                     title: "Two".into(),
                     url: "https://www.youtube.com/watch?v=bbbbbbbbbbb".into(),
                     page_url: Some("https://www.youtube.com/watch?v=bbbbbbbbbbb".into()),
+                    thumbnail_url: Some("https://i.ytimg.com/vi/bbbbbbbbbbb/hqdefault.jpg".into()),
+                    channel: None,
                 },
             ]
         );
@@ -1158,6 +1289,30 @@ mod tests {
             .iter()
             .any(|item| item.contains("The Beatles - Blackbird")));
         assert!(!queries.iter().any(|item| item == "ytsearch5:The Beatles"));
+    }
+
+    #[test]
+    fn cover_search_is_small_and_not_a_url_lookup() {
+        let queries = cover_query_variants("Artist - Song (Live)");
+        assert!(queries.iter().all(|item| item.starts_with("ytsearch4:")));
+        assert!(!queries.iter().any(|item| item.contains("ytsearch8:")));
+        assert!(cover_query_variants("https://www.youtube.com/watch?v=dQw4w9WgXcQ").is_empty());
+    }
+
+    #[test]
+    fn cover_urls_stay_on_youtube_thumbs() {
+        assert!(is_allowed_cover_url(
+            "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+        ));
+        assert!(is_allowed_cover_url(
+            "https://i1.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"
+        ));
+        assert!(!is_allowed_cover_url(
+            "http://i.ytimg.com/vi/x/hqdefault.jpg"
+        ));
+        assert!(!is_allowed_cover_url("https://example.com/cover.jpg"));
+        assert!(!is_allowed_cover_url("https://evil.com/i.ytimg.com/x.jpg"));
+        assert!(!is_allowed_cover_url("file:///tmp/cover.jpg"));
     }
 
     #[test]

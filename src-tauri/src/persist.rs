@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
+use crate::eq::EqPersist;
 use crate::error::AppResult;
 use crate::player::queue::RepeatMode;
 
@@ -45,6 +46,10 @@ pub struct PersistData {
     pub accent: String,
     #[serde(default)]
     pub custom_themes: Vec<CustomTheme>,
+    #[serde(default)]
+    pub minimize_movement: bool,
+    #[serde(default)]
+    pub eq: EqPersist,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,6 +105,8 @@ impl Default for PersistData {
             theme: default_theme(),
             accent: default_accent(),
             custom_themes: Vec::new(),
+            minimize_movement: false,
+            eq: EqPersist::default(),
         }
     }
 }
@@ -215,6 +222,10 @@ mod tests {
         assert!(data.replaygain);
         assert!(data.library_roots.is_empty());
         assert!(data.custom_themes.is_empty());
+        assert!(!data.eq.enabled);
+        assert_eq!(data.eq.preset_id, "flat");
+        assert!(data.eq.auto_preamp);
+        assert!(data.eq.custom_presets.is_empty());
     }
 
     #[test]
@@ -225,6 +236,29 @@ mod tests {
         .unwrap();
         assert_eq!(data.theme, "dusk");
         assert!(data.custom_themes.is_empty());
+        assert!(!data.minimize_movement);
+        assert!(!data.eq.enabled);
+        assert_eq!(data.eq.gains.len(), 10);
+    }
+
+    #[test]
+    fn eq_user_preset_round_trip_in_state() {
+        let mut data = PersistData::default();
+        data.eq.enabled = true;
+        data.eq.preset_id = "custom-1".into();
+        data.eq.gains = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0];
+        data.eq.custom_presets.push(crate::eq::EqUserPreset {
+            id: "custom-1".into(),
+            name: "Desk".into(),
+            gains: data.eq.gains,
+            preamp: -2.0,
+            auto_preamp: true,
+        });
+        let raw = serde_json::to_string(&data).unwrap();
+        let back: PersistData = serde_json::from_str(&raw).unwrap();
+        assert_eq!(back.eq.preset_id, "custom-1");
+        assert_eq!(back.eq.custom_presets[0].name, "Desk");
+        assert_eq!(back.eq.gains[9], 2.0);
     }
 
     #[test]

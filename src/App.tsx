@@ -10,6 +10,7 @@ import { TagsView } from "@/features/tags/TagsView";
 import { api, isTauri, listen } from "@/lib/api";
 import { errorMessage } from "@/lib/format";
 import { applyAppearance } from "@/lib/theme";
+import { applyMotion } from "@/lib/motion";
 import type { PlayerSnapshot, Tick } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 
@@ -25,10 +26,12 @@ export default function App() {
   const setPlaylists = useAppStore((state) => state.setPlaylists);
   const setLibraryRoots = useAppStore((state) => state.setLibraryRoots);
   const setAppearance = useAppStore((state) => state.setAppearance);
+  const setMinimizeMovement = useAppStore((state) => state.setMinimizeMovement);
 
   useEffect(() => {
     if (!isTauri()) {
       applyAppearance("dusk", "blue");
+      applyMotion(false);
       setStatus("Preview only. Run npm run tauri dev for playback and tags in Audios!.", "info");
       return;
     }
@@ -48,9 +51,11 @@ export default function App() {
         setPlaylists(playlists);
         setLibraryRoots(roots);
         setAppearance(appearance.theme, appearance.accent, appearance.customThemes ?? []);
+        setMinimizeMovement(appearance.minimizeMovement ?? false);
       } catch (error) {
         if (!disposed) {
           applyAppearance("dusk", "blue");
+          applyMotion(false);
           setStatus(errorMessage(error, "Could not load player"));
         }
       }
@@ -83,7 +88,7 @@ export default function App() {
       stop.forEach((fn) => fn());
       window.removeEventListener("keydown", onKey);
     };
-  }, [applySnapshot, applyTick, setAppearance, setLibraryRoots, setNowPlayingOpen, setPlaylists, setStatus]);
+  }, [applySnapshot, applyTick, setAppearance, setLibraryRoots, setMinimizeMovement, setNowPlayingOpen, setPlaylists, setStatus]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-app">
@@ -91,16 +96,16 @@ export default function App() {
       <div className="relative flex min-h-0 flex-1">
         <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col">
-          <div className={tab === "player" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+          <div className={tab === "player" ? "tab-panel flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
             <PlayerView />
           </div>
-          <div className={tab === "search" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+          <div className={tab === "search" ? "tab-panel flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
             <SearchView />
           </div>
-          <div className={tab === "tags" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+          <div className={tab === "tags" ? "tab-panel flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
             <TagsView />
           </div>
-          <div className={tab === "settings" ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
+          <div className={tab === "settings" ? "tab-panel flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}>
             <SettingsView />
           </div>
           {status ? (

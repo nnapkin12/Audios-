@@ -31,17 +31,20 @@ All disk, audio, process, and tag work lives in Rust. The webview renders state 
 ## Backend
 
 - [`src-tauri/src/player/`](../src-tauri/src/player/) — `PlayerEngine` (rodio + Symphonia), recursive scan, queue.
+- [`src-tauri/src/eq.rs`](../src-tauri/src/eq.rs) — app-wide graphic EQ (10-band peaking biquads) applied to decoded PCM.
 - [`src-tauri/src/search.rs`](../src-tauri/src/search.rs) — ytsearch, cache, remux, optional save.
 - [`src-tauri/src/tags/`](../src-tauri/src/tags/) — read/write/batch/pictures/custom frames.
-- [`src-tauri/src/persist.rs`](../src-tauri/src/persist.rs) — last folder, volume, repeat/shuffle, ReplayGain/gapless, themes, playlist names and items. Old `positions` keys in `state.json` are ignored and dropped when you leave that track.
-- [`src-tauri/src/playlists.rs`](../src-tauri/src/playlists.rs) — create / rename / delete, add paths. Custom pictures are `playlist-covers/{id}.jpg`. If that file is missing, a 2×2 mosaic of embedded track pictures is cached as `{id}.auto.jpg`. The picker sends a filesystem path; Rust reads the image. Do not send picture bytes through IPC.
+- [`src-tauri/src/persist.rs`](../src-tauri/src/persist.rs) — last folder, volume, repeat/shuffle, ReplayGain/gapless, EQ (enabled, live curve, user presets), themes, playlist names and items. Old `positions` keys in `state.json` are ignored and dropped when you leave that track.
+- [`src-tauri/src/playlists.rs`](../src-tauri/src/playlists.rs) — create / rename / delete, add songs. Adding a folder expands to audio paths. Custom pictures are `playlist-covers/{id}.jpg`. If that file is missing, a 2×2 mosaic of embedded track pictures is cached as `{id}.auto.jpg`. The picker sends a filesystem path; Rust reads the image. Do not send picture bytes through IPC.
 - [`src-tauri/src/commands/mod.rs`](../src-tauri/src/commands/mod.rs) — IPC only.
 
 Config is under the `directories` crate path for qualifier `com`, org `audios`, app `Audios` (typically `~/.config/audios/Audios/state.json`). Playlist pictures live next to that file in `playlist-covers/`. Search temps are `~/.cache/audios/search/`. The Tauri bundle identifier is `com.audios.desktop` — those names do not match, and changing either one moves user data.
 
 ## Playback
 
-Rodio keeps the output stream alive and queues Symphonia decoders. Gapless appends the next file about 1.5s before the current one ends. ReplayGain is a volume multiplier from track/album tags. Switching tracks forgets the previous file’s saved place so the next play starts at 0:00. Pause does not write a resume offset.
+Rodio keeps the output stream alive and queues Symphonia decoders. Each queued file is wrapped in an EQ Source on the `audios-rodio` thread (10-band ISO peaking biquads, 32-bit float). Gapless appends the next file about 1.5s before the current track ends; that next Source has its own filter memory so song A’s bass does not leak into song B. Seek resets that source’s biquads. Live slider changes swap gains on the shared EQ params without rebuilding the sink.
+
+Playback order is **decode → EQ → sink volume** (volume × mute × ReplayGain). ReplayGain stays a loudness multiplier from track/album tags (`apply_volume`). EQ is spectral and never writes files or tags. EQ off / Flat is a true bypass (bit-identical to the previous path aside from volume / ReplayGain). User EQ presets live in `state.json` next to custom themes; built-ins are compiled in. Switching tracks forgets the previous file’s saved place so the next play starts at 0:00. Pause does not write a resume offset.
 
 Release builds use `panic = "unwind"` so `catch_unwind` around the decoder can turn a Symphonia panic into an error instead of killing the AppImage.
 
@@ -55,7 +58,7 @@ The original file is copied to a sibling temp that **keeps the audio extension**
 
 ## Search (two steps)
 
-1. **List** — `yt-dlp -J --flat-playlist ytsearchN:query`. This is metadata only: title + watch URL. No audio bytes.
+1. **List** — `yt-dlp -J --flat-playlist ytsearchN:query`. This is metadata only: title + watch URL. No audio bytes. Cover search in Tags uses this step with four results and embeds a YouTube thumbnail via curl; it does not download audio.
 2. **Play** — `cache_media(watch_url)` downloads a temp file, remuxes it, then `play_tracks` loads that path. Switching tracks deletes other files in the search cache. **Download** copies the remuxed file to a user-chosen path.
 
 The UI already has the title from step 1. Step 2 is not a second text search; it resolves the watch URL into a local file rodio can decode.

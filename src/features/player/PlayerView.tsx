@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import { Pencil, Play, Search, X } from "lucide-react";
+import { Pencil, Search, X } from "lucide-react";
+import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
 import { filterTracks, invalidateBrowse, openBrowsePage } from "@/features/player/browse";
 import { LibraryHome } from "@/features/player/LibraryHome";
 import { LibraryNav } from "@/features/player/Playlists";
@@ -23,6 +24,8 @@ export function PlayerView() {
   const pageTracks = useAppStore((state) => state.pageTracks);
   const pageLoading = useAppStore((state) => state.pageLoading);
   const playlists = useAppStore((state) => state.playlists);
+  const currentPath = useAppStore((state) => state.snapshot?.current?.path ?? null);
+  const playing = useAppStore((state) => state.snapshot?.playing ?? false);
   const setStatus = useAppStore((state) => state.setStatus);
   const setLibraryRoots = useAppStore((state) => state.setLibraryRoots);
   const setPlaylists = useAppStore((state) => state.setPlaylists);
@@ -34,6 +37,8 @@ export function PlayerView() {
 
   const playlist =
     browse.kind === "playlist" ? playlists.find((item) => item.id === browse.id) : null;
+  const currentInPage = Boolean(currentPath && pageTracks.some((track) => track.path === currentPath));
+  const showPause = currentInPage && playing;
 
   const browseKey =
     browse.kind === "folder" ? browse.path : browse.kind === "playlist" ? browse.id : "home";
@@ -54,7 +59,7 @@ export function PlayerView() {
       const path = await pickAudioFile();
       if (path) useAppStore.getState().applySnapshot(await api.openPath(path));
     } catch (error) {
-      setStatus(errorMessage(error, "Could not open file"));
+      setStatus(errorMessage(error, "Couldn't play this"));
     }
   }
 
@@ -67,8 +72,20 @@ export function PlayerView() {
       invalidateBrowse("folder", change.path);
       await openBrowsePage({ kind: "folder", path: change.path }, true);
     } catch (error) {
-      setStatus(errorMessage(error, "Could not add folder"));
+      setStatus(errorMessage(error, "Couldn't add music"));
     }
+  }
+
+  async function playOrToggle() {
+    if (currentInPage) {
+      try {
+        useAppStore.getState().applySnapshot(await api.toggle());
+      } catch (error) {
+        setStatus(errorMessage(error, "Could not control playback"));
+      }
+      return;
+    }
+    await playTracks();
   }
 
   async function playTracks(startPath?: string) {
@@ -125,13 +142,6 @@ export function PlayerView() {
   }
 
   function trackMenu(track: Track): MenuEntry[] {
-    const source =
-      playlist?.items.find(
-        (item) =>
-          item.path === track.path ||
-          track.path.startsWith(`${item.path}/`) ||
-          track.path.startsWith(`${item.path}\\`),
-      ) ?? null;
     return [
       { kind: "action", action: { label: "Play", onClick: () => void playTracks(track.path) } },
       {
@@ -163,28 +173,28 @@ export function PlayerView() {
       {
         kind: "action",
         action: {
-          label: "Show in files",
+          label: "Show in Files",
           onClick: () => {
             void revealInFiles(track.path).catch((error) => {
-              setStatus(errorMessage(error, "Could not open files"));
+              setStatus(errorMessage(error, "Couldn't open Files"));
             });
           },
         },
       },
-      ...(source
+      ...(playlist
         ? ([
             { kind: "sep" },
             {
               kind: "action",
               action: {
-                label: source.kind === "dir" ? "Remove folder from playlist" : "Remove from playlist",
+                label: "Remove from playlist",
                 danger: true,
                 onClick: () => {
-                  void api.removeFromPlaylist(playlist!.id, source.path).then((list) => {
-                    dropPlaylistCover(playlist!.id);
+                  void api.removeFromPlaylist(playlist.id, track.path).then((list) => {
+                    dropPlaylistCover(playlist.id);
                     setPlaylists(list);
-                    invalidateBrowse("playlist", playlist!.id);
-                    void openBrowsePage({ kind: "playlist", id: playlist!.id }, true);
+                    invalidateBrowse("playlist", playlist.id);
+                    void openBrowsePage({ kind: "playlist", id: playlist.id }, true);
                   });
                 },
               },
@@ -205,46 +215,30 @@ export function PlayerView() {
   const countLabel = pageLoading
     ? "Reading library…"
     : pageTracks.length === 0
-      ? "No tracks"
+      ? "No songs"
       : filtered
-        ? `${visibleTracks.length} of ${pageTracks.length} track${pageTracks.length === 1 ? "" : "s"}`
-        : `${pageTracks.length} track${pageTracks.length === 1 ? "" : "s"}`;
+        ? `${visibleTracks.length} of ${pageTracks.length} song${pageTracks.length === 1 ? "" : "s"}`
+        : `${pageTracks.length} song${pageTracks.length === 1 ? "" : "s"}`;
 
   return (
     <section className="flex min-h-0 flex-1">
-      <div className="flex w-[300px] shrink-0 flex-col border-r border-app-line">
-        <div className="flex items-center justify-between px-3 py-2.5">
+      <div className="flex w-[400px] shrink-0 flex-col border-r border-app-line">
+        <div className="px-3 pb-2 pt-3">
           <button
             type="button"
             onClick={() => void openBrowsePage({ kind: "home" })}
-            className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted hover:text-app-text"
+            className="block text-left text-[28px] font-semibold tracking-tight text-app-text hover:text-app-subtle"
           >
-            Library
+            Music Library
           </button>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              title="Open one audio file"
-              onClick={() => void openFile()}
-              className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
-            >
-              Add file
-            </button>
-            <button
-              type="button"
-              title="Add a folder to the library"
-              onClick={() => void addFolder()}
-              className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
-            >
-              Add folder
-            </button>
-          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-auto px-2 pb-3">
           <LibraryNav
             creating={creatingPlaylist}
             setCreating={setCreatingPlaylist}
             onMenu={openMenu}
+            onAddFile={() => void openFile()}
+            onAddFolder={() => void addFolder()}
           />
         </div>
       </div>
@@ -254,9 +248,9 @@ export function PlayerView() {
           <LibraryHome />
         ) : (
           <>
-            <div className="flex items-end justify-between gap-4 px-5 py-4">
-              <div className="flex min-w-0 items-end gap-4">
-                {browse.kind === "playlist" && playlist ? (
+            <div className="flex flex-col gap-4 px-5 py-4">
+              {browse.kind === "playlist" && playlist ? (
+                <div className="flex flex-col items-center text-center">
                   <button
                     type="button"
                     title={playlist.hasCover ? "Change picture" : "Add picture"}
@@ -280,23 +274,23 @@ export function PlayerView() {
                           : []),
                       ])
                     }
-                    className="group relative shrink-0"
+                    className="group relative"
                   >
                     <PlaylistCover
                       id={playlist.id}
-                      className="h-[88px] w-[88px] rounded-xl"
+                      iconSize={56}
+                      className="h-48 w-48 rounded-2xl shadow-[0_18px_40px_rgb(0_0_0_/_0.28)]"
                     />
-                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-black/45 text-[12px] font-semibold text-white opacity-0 group-hover:opacity-100">
+                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 text-[13px] font-semibold text-white opacity-0 group-hover:opacity-100">
                       {playlist.hasCover ? "Change" : "Add picture"}
                     </span>
                   </button>
-                ) : null}
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
-                    {browse.kind === "folder" ? "Folder" : "Playlist"}
+                  <p className="mt-4 text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
+                    Playlist
                   </p>
-                  {browse.kind === "playlist" && playlist && renaming ? (
+                  {renaming ? (
                     <form
+                      className="mt-1 w-full max-w-md"
                       onSubmit={(event) => {
                         event.preventDefault();
                         void commitRename();
@@ -307,31 +301,37 @@ export function PlayerView() {
                         value={draftName}
                         onChange={(event) => setDraftName(event.target.value)}
                         onBlur={() => void commitRename()}
-                        className="mt-0.5 w-full max-w-md rounded-md border border-app-border bg-app px-2 py-1 text-[22px] font-semibold text-app-text"
+                        className="w-full rounded-md border border-app-border bg-app px-2 py-1 text-center text-[22px] font-semibold text-app-text"
                       />
                     </form>
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <div className="mt-1 flex items-center justify-center gap-2">
                       <p className="truncate text-[22px] font-semibold text-app-text">{title}</p>
-                      {browse.kind === "playlist" && playlist ? (
-                        <button
-                          type="button"
-                          title="Rename playlist"
-                          onClick={() => {
-                            setDraftName(playlist.name);
-                            setRenaming(true);
-                          }}
-                          className="rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        title="Rename playlist"
+                        onClick={() => {
+                          setDraftName(playlist.name);
+                          setRenaming(true);
+                        }}
+                        className="rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text"
+                      >
+                        <Pencil size={14} />
+                      </button>
                     </div>
                   )}
                   <p className="text-[14px] font-medium text-app-muted">{countLabel}</p>
                 </div>
-              </div>
-              <div className="flex shrink-0 gap-2">
+              ) : (
+                <div className="min-w-0">
+                  <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
+                    Library
+                  </p>
+                  <p className="truncate text-[22px] font-semibold text-app-text">{title}</p>
+                  <p className="text-[14px] font-medium text-app-muted">{countLabel}</p>
+                </div>
+              )}
+              <div className={`flex shrink-0 gap-2 ${browse.kind === "playlist" ? "justify-center" : "justify-end"}`}>
                 {browse.kind === "playlist" && playlist ? (
                   <>
                     <button
@@ -339,46 +339,44 @@ export function PlayerView() {
                       onClick={() => void pickAudioFilesInto(playlist.id)}
                       className="rounded-md px-3 py-1.5 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
                     >
-                      Add files
+                      Add songs
                     </button>
                     <button
                       type="button"
                       onClick={() => void pickFolderInto(playlist.id)}
                       className="rounded-md px-3 py-1.5 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
                     >
-                      Add folder
+                      Add album
                     </button>
                   </>
                 ) : null}
                 <button
                   type="button"
-                  disabled={visibleTracks.length === 0}
-                  onClick={() => void playTracks()}
+                  disabled={visibleTracks.length === 0 && !currentInPage}
+                  title={showPause ? "Pause" : "Play"}
+                  onClick={() => void playOrToggle()}
                   className="flex items-center gap-1.5 rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg disabled:opacity-40"
                 >
-                  <Play size={14} fill="currentColor" />
-                  Play
+                  <PlayPauseIcon playing={showPause} size={14} />
+                  {showPause ? "Pause" : "Play"}
                 </button>
               </div>
             </div>
             {pageTracks.length > 0 || listQuery ? (
               <ListSearch value={listQuery} onChange={setListQuery} />
             ) : null}
-            {browse.kind === "playlist" && playlist && playlist.items.length > 0 ? (
-              <PlaylistSources playlistId={playlist.id} />
-            ) : null}
             {pageTracks.length === 0 && !pageLoading ? (
               <div className="px-5">
                 <div className="rounded-xl border border-dashed border-app-border bg-app-raised/60 px-4 py-6 text-[14px] font-medium leading-6 text-app-muted">
                   {browse.kind === "playlist"
-                    ? "Add files or a folder to this playlist."
-                    : "This folder has no audio files Audios! can play."}
+                    ? "Add songs to this playlist."
+                    : "No songs here yet."}
                 </div>
               </div>
             ) : visibleTracks.length === 0 && filtered ? (
               <div className="px-5">
                 <div className="rounded-xl border border-dashed border-app-border bg-app-raised/60 px-4 py-6 text-[14px] font-medium leading-6 text-app-muted">
-                  No tracks match that search.
+                  No songs match that search.
                 </div>
               </div>
             ) : (
@@ -415,7 +413,7 @@ function ListSearch({
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="Search this list"
+          placeholder="Search songs"
           className="w-full rounded-lg border border-app-border bg-app-raised py-2.5 pl-9 pr-9 text-[15px] text-app-text"
         />
         {value ? (
@@ -433,41 +431,6 @@ function ListSearch({
   );
 }
 
-function PlaylistSources({ playlistId }: { playlistId: string }) {
-  const playlist = useAppStore((state) => state.playlists.find((item) => item.id === playlistId));
-  const setPlaylists = useAppStore((state) => state.setPlaylists);
-  if (!playlist || playlist.items.length === 0) return null;
-
-  return (
-    <div className="flex flex-wrap gap-1 px-5 pb-2">
-      {playlist.items.map((item) => (
-        <span
-          key={item.path}
-          className="flex items-center gap-1 rounded-full border border-app-border bg-app-raised px-2 py-0.5 text-[12px] font-semibold text-app-subtle"
-        >
-          {baseName(item.path)}
-          {item.kind === "dir" ? " · folder" : ""}
-          <button
-            type="button"
-            title="Remove from playlist"
-            onClick={() => {
-              void api.removeFromPlaylist(playlist.id, item.path).then((list) => {
-                dropPlaylistCover(playlist.id);
-                setPlaylists(list);
-                invalidateBrowse("playlist", playlist.id);
-                void openBrowsePage({ kind: "playlist", id: playlist.id }, true);
-              });
-            }}
-            className="text-app-muted hover:text-app-danger"
-          >
-            ×
-          </button>
-        </span>
-      ))}
-    </div>
-  );
-}
-
 async function pickAudioFilesInto(playlistId: string) {
   const paths = await pickAudioFiles();
   if (paths.length === 0) return;
@@ -479,7 +442,7 @@ async function pickAudioFilesInto(playlistId: string) {
 }
 
 async function pickFolderInto(playlistId: string) {
-  const folder = await pickFolder();
+  const folder = await pickFolder("Add album");
   if (!folder) return;
   const list = await api.addToPlaylist(playlistId, [folder]);
   dropPlaylistCover(playlistId);
