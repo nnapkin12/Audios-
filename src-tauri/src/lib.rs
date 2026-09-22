@@ -55,6 +55,7 @@ pub fn run() {
             commands::set_shuffle,
             commands::set_replaygain,
             commands::set_gapless,
+            commands::set_speed,
             commands::set_eq,
             commands::save_custom_eq,
             commands::delete_custom_eq,

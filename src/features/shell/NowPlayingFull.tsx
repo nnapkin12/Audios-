@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { ChevronDown, Repeat, Repeat1, Shuffle, SkipBack, SkipForward } from "lucide-react";
 import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
 import { TransportSeek } from "@/features/shell/SeekBar";
+import { SpeedControl } from "@/features/shell/SpeedControl";
 import { paletteFromPixels, type ArtColors } from "@/lib/artworkColor";
 import { api } from "@/lib/api";
 import { displayArtist, displayTitle } from "@/lib/format";
@@ -106,6 +107,7 @@ export function NowPlayingFull() {
               <Repeat key={repeat} size={22} className="t-pop" />
             )}
           </button>
+          <SpeedControl />
         </div>
         </div>
       </div>

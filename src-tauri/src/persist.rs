@@ -37,6 +37,8 @@ pub struct PersistData {
     pub shuffle: bool,
     pub replaygain: bool,
     pub gapless: bool,
+    #[serde(default = "default_speed")]
+    pub speed: f64,
     pub positions: HashMap<String, u64>,
     #[serde(default)]
     pub playlists: Vec<Playlist>,
@@ -89,6 +91,10 @@ fn default_accent() -> String {
     "blue".into()
 }
 
+fn default_speed() -> f64 {
+    1.0
+}
+
 impl Default for PersistData {
     fn default() -> Self {
         Self {
@@ -100,6 +106,7 @@ impl Default for PersistData {
             shuffle: false,
             replaygain: true,
             gapless: true,
+            speed: default_speed(),
             positions: HashMap::new(),
             playlists: Vec::new(),
             theme: default_theme(),

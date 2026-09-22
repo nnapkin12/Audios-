@@ -85,6 +85,7 @@ export interface PlayerSnapshot {
   shuffle: boolean;
   replaygain: boolean;
   gapless: boolean;
+  speed: number;
   eq?: EqState;
   root: string | null;
   tree: FolderNode | null;

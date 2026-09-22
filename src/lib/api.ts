@@ -174,6 +174,7 @@ export const api = {
   setShuffle: (shuffle: boolean) => invoke<PlayerSnapshot>("set_shuffle", { shuffle }),
   setReplaygain: (enabled: boolean) => invoke<PlayerSnapshot>("set_replaygain", { enabled }),
   setGapless: (enabled: boolean) => invoke<PlayerSnapshot>("set_gapless", { enabled }),
+  setSpeed: (speed: number) => invoke<PlayerSnapshot>("set_speed", { speed }),
   setEq: (eq: EqUpdate) => invoke<PlayerSnapshot>("set_eq", { eq }),
   saveCustomEq: (preset: EqUserPreset) => invoke<PlayerSnapshot>("save_custom_eq", { preset }),
   deleteCustomEq: (id: string) => invoke<PlayerSnapshot>("delete_custom_eq", { id }),

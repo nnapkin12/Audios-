@@ -21,6 +21,8 @@ pub trait PlayerEngine: Send + Sync {
     fn position_ms(&self) -> u64;
     fn duration_ms(&self) -> u64;
     fn set_volume(&self, volume: f64) -> AppResult<()>;
+    fn set_speed(&self, speed: f64) -> AppResult<()>;
+    fn speed(&self) -> f64;
     fn set_eq(&self, params: EqParams) -> AppResult<()>;
     fn set_gapless_next(&self, path: Option<&Path>) -> AppResult<()>;
     fn is_playing(&self) -> bool;
@@ -35,6 +37,7 @@ enum Command {
     Stop(Sender<AppResult<()>>),
     Seek(u64, Sender<AppResult<()>>),
     SetVolume(f64, Sender<AppResult<()>>),
+    SetSpeed(f64, Sender<AppResult<()>>),
     SetEq(EqParams, Sender<AppResult<()>>),
     Append(PathBuf, Sender<AppResult<()>>),
 }
@@ -42,6 +45,7 @@ enum Command {
 struct Shared {
     position_ms: AtomicU64,
     duration_ms: AtomicU64,
+    speed_bits: AtomicU64,
     queued: AtomicUsize,
     empty: AtomicBool,
     playing: AtomicBool,
@@ -59,6 +63,7 @@ impl RodioEngine {
         let shared = Arc::new(Shared {
             position_ms: AtomicU64::new(0),
             duration_ms: AtomicU64::new(0),
+            speed_bits: AtomicU64::new(1.0f64.to_bits()),
             queued: AtomicUsize::new(0),
             empty: AtomicBool::new(true),
             playing: AtomicBool::new(false),
@@ -100,12 +105,17 @@ impl PlayerEngine for RodioEngine {
         self.send(Command::Stop)
     }
 
-    fn seek(&self, position_ms: u64) -> AppResult<()> {
-        self.send(|reply| Command::Seek(position_ms, reply))
+    fn seek(&self, file_ms: u64) -> AppResult<()> {
+        // Rodio's speed filter seeks in output time, then multiplies back
+        // into the file. Callers pass a position in the recording.
+        let speed = self.speed();
+        let output_ms = (file_ms as f64 / speed).round() as u64;
+        self.send(|reply| Command::Seek(output_ms, reply))
     }
 
     fn position_ms(&self) -> u64 {
-        self.shared.position_ms.load(Ordering::Relaxed)
+        let wall = self.shared.position_ms.load(Ordering::Relaxed) as f64;
+        (wall * self.speed()).round() as u64
     }
 
     fn duration_ms(&self) -> u64 {
@@ -114,6 +124,22 @@ impl PlayerEngine for RodioEngine {
 
     fn set_volume(&self, volume: f64) -> AppResult<()> {
         self.send(|reply| Command::SetVolume(volume, reply))
+    }
+
+    fn set_speed(&self, speed: f64) -> AppResult<()> {
+        self.shared
+            .speed_bits
+            .store(speed.to_bits(), Ordering::Relaxed);
+        self.send(|reply| Command::SetSpeed(speed, reply))
+    }
+
+    fn speed(&self) -> f64 {
+        let speed = f64::from_bits(self.shared.speed_bits.load(Ordering::Relaxed));
+        if speed.is_finite() && speed > 0.0 {
+            speed
+        } else {
+            1.0
+        }
     }
 
     fn set_eq(&self, params: EqParams) -> AppResult<()> {
@@ -201,6 +227,10 @@ fn handle_command(sink: &Sink, shared: &Shared, eq: &Arc<EqShared>, command: Com
             sink.set_volume(volume.clamp(0.0, 1.5) as f32);
             let _ = reply.send(Ok(()));
         }
+        Command::SetSpeed(speed, reply) => {
+            sink.set_speed(speed as f32);
+            let _ = reply.send(Ok(()));
+        }
         Command::SetEq(params, reply) => {
             eq.set(params);
             let _ = reply.send(Ok(()));
@@ -279,6 +309,7 @@ fn reply_err(command: Command, error: AppError) {
         | Command::Stop(reply)
         | Command::Seek(_, reply)
         | Command::SetVolume(_, reply)
+        | Command::SetSpeed(_, reply)
         | Command::SetEq(_, reply)
         | Command::Append(_, reply) => {
             let _ = reply.send(Err(error));

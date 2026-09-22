@@ -21,6 +21,7 @@
 - Now-playing bar plus a full now-playing view (`f` to open, `Esc` to close). The full view takes its colors from the album art. The rest of the app stays on your theme.
 - If a song or album folder was moved or renamed, Audios! relinks it when the file name is unique. Otherwise the item stays listed and **Locate** asks you to point at the new path.
 - Transport keys: Space play/pause, arrows seek ±5s, `n` / `p` next / previous.
+- Playback speed on the transport controls, from 0.5× to 2×. Pitch moves with the tempo. Buttons step by 0.05. The number can be typed.
 - Frameless title bar with custom minimize / maximize / close on the top right.
 
 ## Music Search (and save)

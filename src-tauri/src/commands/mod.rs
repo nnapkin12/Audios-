@@ -177,6 +177,11 @@ pub fn set_gapless(player: State<Player>, enabled: bool) -> AppResult<PlayerSnap
 }
 
 #[tauri::command]
+pub fn set_speed(player: State<Player>, speed: f64) -> AppResult<PlayerSnapshot> {
+    player.set_speed(speed)
+}
+
+#[tauri::command]
 pub fn set_eq(player: State<Player>, eq: EqUpdate) -> AppResult<PlayerSnapshot> {
     player.set_eq(eq)
 }

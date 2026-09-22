@@ -20,6 +20,16 @@ use self::scan::{collect_tracks, replaygain_multiplier, track_from_path, FolderN
 
 pub const STATE_EVENT: &str = "player://state";
 pub const TICK_EVENT: &str = "player://tick";
+pub const SPEED_MIN: f64 = 0.5;
+pub const SPEED_MAX: f64 = 2.0;
+
+pub fn clamp_speed(value: f64) -> f64 {
+    if !value.is_finite() {
+        return 1.0;
+    }
+    let hundredths = (value * 100.0).round() / 100.0;
+    hundredths.clamp(SPEED_MIN, SPEED_MAX)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +46,7 @@ pub struct PlayerSnapshot {
     pub shuffle: bool,
     pub replaygain: bool,
     pub gapless: bool,
+    pub speed: f64,
     pub eq: eq::EqState,
     pub root: Option<String>,
     pub tree: Option<FolderNode>,
@@ -55,6 +66,7 @@ struct Logic {
     muted: bool,
     replaygain: bool,
     gapless: bool,
+    speed: f64,
     root: Option<PathBuf>,
     error: Option<String>,
     pending_gapless: bool,
@@ -73,6 +85,7 @@ pub struct Player {
 impl Player {
     pub fn new(app: AppHandle, persist: Store) -> Self {
         let saved = persist.snapshot();
+        let speed = clamp_speed(saved.speed);
         let player = Self {
             engine: Arc::new(RodioEngine::new()),
             logic: Arc::new(Mutex::new(Logic {
@@ -81,6 +94,7 @@ impl Player {
                 muted: saved.muted,
                 replaygain: saved.replaygain,
                 gapless: saved.gapless,
+                speed,
                 root: None,
                 error: None,
                 pending_gapless: false,
@@ -92,6 +106,7 @@ impl Player {
         };
         crate::search::clear_temps();
         let _ = player.engine.set_eq(eq::EqParams::from_persist(&saved.eq));
+        let _ = player.engine.set_speed(speed);
 
         let weak = player.clone();
         std::thread::Builder::new()
@@ -130,6 +145,7 @@ impl Player {
             shuffle: logic.queue.shuffle,
             replaygain: logic.replaygain,
             gapless: logic.gapless,
+            speed: logic.speed,
             eq: if eq_catalog {
                 eq::state_with_catalog(&logic.eq)
             } else {
@@ -398,6 +414,15 @@ impl Player {
         Ok(self.snapshot())
     }
 
+    pub fn set_speed(&self, speed: f64) -> AppResult<PlayerSnapshot> {
+        let speed = clamp_speed(speed);
+        self.engine.set_speed(speed)?;
+        self.logic.lock().expect("player lock").speed = speed;
+        self.persist.update(|data| data.speed = speed);
+        self.emit_state();
+        Ok(self.snapshot())
+    }
+
     pub fn refresh_metadata(&self, paths: &[String]) -> Vec<Track> {
         let mut fresh = Vec::new();
         for path in paths {
@@ -532,15 +557,22 @@ impl Player {
     }
 
     fn current_duration(&self, logic: &Logic) -> u64 {
-        let queried = self.engine.duration_ms();
-        if queried > 0 {
-            queried
+        let decoded = self.engine.duration_ms();
+        let tagged = logic
+            .queue
+            .current()
+            .map(|track| track.duration_ms)
+            .unwrap_or(0);
+        let header = decoded.max(tagged);
+        let position = self.engine.position_ms();
+        // A short header (common on some MP3s) would pin the bar at the end
+        // while samples are still playing. Once playback passes that header,
+        // grow the length by the overrun so the bar can move again.
+        if self.engine.is_playing() && header > 0 && position > header {
+            let overrun = position - header;
+            header + overrun + overrun
         } else {
-            logic
-                .queue
-                .current()
-                .map(|track| track.duration_ms)
-                .unwrap_or(0)
+            header
         }
     }
 
@@ -663,5 +695,19 @@ impl Player {
                 duration_ms: self.current_duration(&logic),
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clamp_speed;
+
+    #[test]
+    fn speed_stays_inside_one_octave() {
+        assert_eq!(clamp_speed(1.0), 1.0);
+        assert_eq!(clamp_speed(0.1), 0.5);
+        assert_eq!(clamp_speed(3.0), 2.0);
+        assert_eq!(clamp_speed(f64::NAN), 1.0);
+        assert_eq!(clamp_speed(1.256), 1.26);
     }
 }
