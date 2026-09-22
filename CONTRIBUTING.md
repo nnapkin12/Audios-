@@ -24,7 +24,7 @@ Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.
 
 ## Search
 
-[`src-tauri/src/search.rs`](src-tauri/src/search.rs) lists results with `--flat-playlist`, then downloads and remuxes a temp file for play. Do not feed YouTube AAC `.m4a` straight to rodio. Do not pin `-f` to a named format like `bestaudio[ext=m4a]`. Child processes must go through `spawn_tool` so AppImage Python/GTK env is not leaked into host yt-dlp.
+[`src-tauri/src/search.rs`](src-tauri/src/search.rs) lists results with `--flat-playlist`. Text search is `ytsearch` then `scsearch`. A pasted URL is passed through. Prefer `webpage_url` over building a YouTube link from an id. Do not feed YouTube AAC `.m4a` straight to rodio. Do not pin `-f` to a named format like `bestaudio[ext=m4a]`. `mediaconnect` is for YouTube URLs only. Child processes must go through `spawn_tool` so AppImage Python/GTK env is not leaked into host yt-dlp.
 
 ## Tags
 
@@ -32,7 +32,7 @@ Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.
 
 ## UI
 
-Chrome lives in `src/features/shell`. Stay on WebKit-safe CSS. The window is frameless and the UI fills the client area. Window buttons stay on the top right. Playlist pictures are JPEGs next to `state.json` in `playlist-covers/` (`{id}.jpg` custom, `{id}.auto.jpg` mosaic). Set a custom picture with the native file dialog and a path argument. Adding a folder to a playlist expands to songs. Do not persist per-file resume offsets; leaving a track starts it at 0:00 next time.
+Chrome lives in `src/features/shell`. Stay on WebKit-safe CSS. The window is frameless and the UI fills the client area. Window buttons stay on the top right. Playlist pictures are JPEGs next to `state.json` in `playlist-covers/` (`{id}.jpg` custom, `{id}.auto.jpg` mosaic). Set a custom picture with the native file dialog and a path argument. Adding a folder to a playlist keeps the folder; do not snapshot its files. Do not persist per-file resume offsets; leaving a track starts it at 0:00 next time.
 
 ## Comments
 

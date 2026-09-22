@@ -7,6 +7,7 @@ import { PlayerView } from "@/features/player/PlayerView";
 import { SearchView } from "@/features/search/SearchView";
 import { SettingsView } from "@/features/settings/SettingsView";
 import { TagsView } from "@/features/tags/TagsView";
+import { refreshOpenBrowse } from "@/features/player/browse";
 import { api, isTauri, listen } from "@/lib/api";
 import { errorMessage } from "@/lib/format";
 import { applyAppearance } from "@/lib/theme";
@@ -40,16 +41,18 @@ export default function App() {
 
     void (async () => {
       try {
-        const [snapshot, playlists, appearance, roots] = await Promise.all([
+        const [snapshot, playlists, appearance, roots, missing] = await Promise.all([
           api.state(),
           api.listPlaylists(),
           api.getAppearance(),
           api.listLibraryRoots(),
+          api.listMissing(),
         ]);
         if (disposed) return;
         applySnapshot(snapshot);
         setPlaylists(playlists);
         setLibraryRoots(roots);
+        useAppStore.getState().setMissing(missing);
         setAppearance(appearance.theme, appearance.accent, appearance.customThemes ?? []);
         setMinimizeMovement(appearance.minimizeMovement ?? false);
       } catch (error) {
@@ -61,6 +64,42 @@ export default function App() {
       }
       stop.push(await listen<PlayerSnapshot>("player://state", applySnapshot));
       stop.push(await listen<Tick>("player://tick", applyTick));
+      const refreshFromDisk = async () => {
+        try {
+          const [playlists, roots, missing] = await Promise.all([
+            api.listPlaylists(),
+            api.listLibraryRoots(),
+            api.listMissing(),
+          ]);
+          if (disposed) return;
+          setPlaylists(playlists);
+          setLibraryRoots(roots);
+          useAppStore.getState().setMissing(missing);
+          const browse = useAppStore.getState().browse;
+          if (browse.kind === "folder" && !roots.includes(browse.path)) {
+            useAppStore.getState().setBrowse({ kind: "home" });
+            useAppStore.getState().setPageTracks([]);
+            useAppStore.getState().setPageLoading(false);
+            return;
+          }
+          if (browse.kind !== "home") await refreshOpenBrowse();
+        } catch {
+          // The next open reads the disk again.
+        }
+      };
+      stop.push(await listen("library://changed", () => {
+        void refreshFromDisk();
+      }));
+      const onFocus = () => {
+        if (document.visibilityState === "hidden") return;
+        void refreshFromDisk();
+      };
+      window.addEventListener("focus", onFocus);
+      document.addEventListener("visibilitychange", onFocus);
+      stop.push(() => {
+        window.removeEventListener("focus", onFocus);
+        document.removeEventListener("visibilitychange", onFocus);
+      });
     })();
 
     const onKey = (event: KeyboardEvent) => {

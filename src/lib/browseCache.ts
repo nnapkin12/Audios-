@@ -25,6 +25,17 @@ export function setCachedTracks(key: string, tracks: Track[]): void {
   }
 }
 
+export function patchCachedTracks(tracks: Track[]): void {
+  if (tracks.length === 0) return;
+  const byPath = new Map(tracks.map((track) => [track.path, track]));
+  for (const [key, page] of cache) {
+    cache.set(
+      key,
+      page.map((track) => byPath.get(track.path) ?? track),
+    );
+  }
+}
+
 export function dropCachedTracks(key: string): void {
   cache.delete(key);
 }

@@ -35,7 +35,7 @@ All disk, audio, process, and tag work lives in Rust. The webview renders state 
 - [`src-tauri/src/search.rs`](../src-tauri/src/search.rs) — ytsearch, cache, remux, optional save.
 - [`src-tauri/src/tags/`](../src-tauri/src/tags/) — read/write/batch/pictures/custom frames.
 - [`src-tauri/src/persist.rs`](../src-tauri/src/persist.rs) — last folder, volume, repeat/shuffle, ReplayGain/gapless, EQ (enabled, live curve, user presets), themes, playlist names and items. Old `positions` keys in `state.json` are ignored and dropped when you leave that track.
-- [`src-tauri/src/playlists.rs`](../src-tauri/src/playlists.rs) — create / rename / delete, add songs. Adding a folder expands to audio paths. Custom pictures are `playlist-covers/{id}.jpg`. If that file is missing, a 2×2 mosaic of embedded track pictures is cached as `{id}.auto.jpg`. The picker sends a filesystem path; Rust reads the image. Do not send picture bytes through IPC.
+- [`src-tauri/src/playlists.rs`](../src-tauri/src/playlists.rs) — create / rename / delete, add songs. Adding a folder keeps the folder; open and play read whatever songs are there now. A playlist that was saved as individual songs is linked back to each folder those songs live in, so files dropped in later show up. Songs that were already in that folder and were not on the playlist stay off it. Removing one song excludes that file and leaves the folder linked. A saved file whose parent folder is still on disk, but the file is gone, is dropped. A path on a missing drive is kept. Custom pictures are `playlist-covers/{id}.jpg`. If that file is missing, a 2×2 mosaic of embedded track pictures is cached as `{id}.auto.jpg`. The picker sends a filesystem path; Rust reads the image. Do not send picture bytes through IPC.
 - [`src-tauri/src/commands/mod.rs`](../src-tauri/src/commands/mod.rs) — IPC only.
 
 Config is under the `directories` crate path for qualifier `com`, org `audios`, app `Audios` (typically `~/.config/audios/Audios/state.json`). Playlist pictures live next to that file in `playlist-covers/`. Search temps are `~/.cache/audios/search/`. The Tauri bundle identifier is `com.audios.desktop` — those names do not match, and changing either one moves user data.
@@ -58,7 +58,7 @@ The original file is copied to a sibling temp that **keeps the audio extension**
 
 ## Search (two steps)
 
-1. **List** — `yt-dlp -J --flat-playlist ytsearchN:query`. This is metadata only: title + watch URL. No audio bytes. Cover search in Tags uses this step with four results and embeds a YouTube thumbnail via curl; it does not download audio.
+1. **List** — `yt-dlp -J --flat-playlist`. A text search runs `ytsearchN:` first, then `scsearchN:` for SoundCloud. A pasted link is passed through as-is, so Bandcamp and other yt-dlp sites work when you have the URL. This step is metadata only. Cover search in Tags stays on YouTube thumbnails and does not download audio. A SoundCloud hit keeps its `webpage_url`; do not turn that id into a YouTube watch URL.
 2. **Play** — `cache_media(watch_url)` downloads a temp file, remuxes it, then `play_tracks` loads that path. Switching tracks deletes other files in the search cache. **Download** copies the remuxed file to a user-chosen path.
 
 The UI already has the title from step 1. Step 2 is not a second text search; it resolves the watch URL into a local file rodio can decode.
@@ -68,11 +68,12 @@ The UI already has the title from step 1. Step 2 is not a second text search; it
 | What | Why it is there |
 | --- | --- |
 | Newest yt-dlp on disk, not the first `PATH` hit | `apt` yt-dlp is often years old and cannot extract current YouTube player responses. Prefer `~/.local/bin` when that copy is newer. Override with `AUDIOS_YTDLP`. |
-| `--extractor-args youtube:player_client=mediaconnect` | `android` / `ios` / `tv` / `web` frequently return “requested format is not available”. mediaconnect still yields AAC. |
+| `--extractor-args youtube:player_client=mediaconnect` | `android` / `ios` / `tv` / `web` frequently return “requested format is not available”. mediaconnect still yields AAC. Send it only for YouTube URLs. SoundCloud and other sites use yt-dlp's own defaults. |
 | `--js-runtimes node` when `node` exists | Helps yt-dlp solve YouTube JS challenges. |
 | No `--print filename` / no `--simulate` on download | Those flags skip writing the file. |
 | Remux YouTube AAC `.m4a` to mp3/wav via ffmpeg | rodio 0.20 + Symphonia panics (`Seek errors should not occur during initialization`) on these MP4s. Library `.m4a` files can hit the same bug. |
 | `catch_unwind` around `Decoder::new` | The panic is inside rodio, not a `Result`. |
+| Library file that fails `Decoder::new` is transcoded into `~/.cache/audios/playback/` | Search remux deletes its source. A library file must stay where it is. ffmpeg writes an mp3, then wav, and playback uses that copy. |
 | Invidious / Piped HTTP fallbacks | Last resort if yt-dlp download fails. Public instances go stale; treat the host list as disposable. |
 | Sanitize child env for yt-dlp / ffmpeg / curl; skip AppImage `APPDIR` on PATH | AppImage AppRun points PYTHONHOME, LD_LIBRARY_PATH, GIO_EXTRA_MODULES, GCONV_PATH, and other vars at `/tmp/.mount_*`. Host Python then dies with `Python path configuration:`. Named poison vars are dropped, plus any env whose value lives under the mount. |
 
@@ -80,7 +81,8 @@ Search runtime dependencies: a **current** yt-dlp, `ffmpeg`, and `curl`. Spotify
 
 ## UI notes
 
-- The window is frameless. Window buttons are custom (minimize / maximize / close) on the top right. The UI fills the client area; `html`/`body` use `--app` so compositor square chrome matches the page. Do not add inset frame padding around the app.
+- The window is frameless. Window buttons are custom (minimize / maximize / close) on the top right. The UI fills the client area; `html`/`body` use `--app` so compositor square chrome matches the page. Do not add inset frame padding around the app. Columns and lists use the window width and wrap; do not pin a page to a fixed narrow measure.
+- The full now-playing view sets its own `--app` and `--app-accent` from the album art. Those variables stay on that overlay. The rest of the app keeps the saved theme.
 - Stay on WebKit-safe CSS.
 - The footer status line is red for errors and muted for info (`Saved tags`, `Getting audio…`, Vite preview).
 - Player / Search / Tags / Settings stay mounted and toggle with `hidden` so tab state survives.
@@ -94,7 +96,7 @@ Search runtime dependencies: a **current** yt-dlp, `ffmpeg`, and `curl`. Spotify
 ## Known issues / easy-to-break spots
 
 - **YouTube extractor drift.** mediaconnect, format IDs, and public frontends will rot. Fix the extractor args or host list; do not add a stricter `-f bestaudio[ext=m4a]` selector.
-- **Library m4a.** Scan treats `.m4a` as playable. Some files will fail the same Symphonia seek panic. Remux is only on the search cache path today.
+- **Library decode.** `.m4a` and other containers are still scanned as playable. If Symphonia cannot open one, playback uses the ffmpeg cache copy. The original file is not rewritten.
 - **Search cache** is one file per video id. A failed remux must not leave only an unplayable `.m4a` as the “existing cache” hit — `prepare_for_player` remuxes that path again.
 - Search unit tests are JSON/path only. They do not hit live YouTube and do not require yt-dlp or ffmpeg.
 

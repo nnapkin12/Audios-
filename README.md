@@ -31,9 +31,9 @@ It is **not** a Spotify client. Search cannot pull Spotify-hosted audio.
 
 ## Features
 
-- **Music Player** — Playlists, nested albums, queue, repeat, shuffle, gapless, ReplayGain, and an app-wide graphic EQ. Playlists are named lists of songs with a custom picture, otherwise a mosaic from track artwork. Library and playlist lists have their own search bars.
-- **Search** — query by song and artist (or paste a YouTube URL). Results show thumbnails. Play uses a temp file that is deleted on track change; Download keeps a copy.
-- **Metadata Editor** — title, artists, album, lyrics, ReplayGain, MusicBrainz IDs, custom fields, artwork (including Find artwork), and batch apply across a folder.
+- **Music Player** — Playlists, nested albums, queue, repeat, shuffle, gapless, ReplayGain, and an app-wide graphic EQ. Library folders, and folders added to a playlist, follow the disk when songs are added or removed. Playlists are named lists with a custom picture, otherwise a mosaic from track artwork. Library and playlist lists have their own search bars.
+- **Search** — query by song and artist, or paste a link. Text search lists YouTube and SoundCloud. Results show thumbnails. Play uses a temp file that is deleted on track change; Download keeps a copy.
+- **Metadata Editor** — title, artists, album, lyrics, ReplayGain, MusicBrainz IDs, custom fields, artwork (including Find artwork), and batch apply across a folder. Save stays on screen, and saved tags show up in the player immediately.
 - **Themes** — Dusk, Midnight, Slate, Paper, plus a theme builder with simple grouped colors and Advanced per-token edits.
 
 A longer list lives in [docs/features.md](docs/features.md).

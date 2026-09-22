@@ -1,6 +1,6 @@
 import { useState, type MouseEvent } from "react";
 import { Music, Plus, X } from "lucide-react";
-import { invalidateBrowse, openBrowsePage, samePage } from "@/features/player/browse";
+import { invalidateBrowse, locateMissing, openBrowsePage, samePage } from "@/features/player/browse";
 import { api, pickAudioFiles, pickFolder, pickImageFile, revealInFiles } from "@/lib/api";
 import { PlaylistCover, dropPlaylistCover } from "@/lib/covers";
 import { baseName, errorMessage } from "@/lib/format";
@@ -23,6 +23,7 @@ export function LibraryNav({
 }) {
   const playlists = useAppStore((state) => state.playlists);
   const libraryRoots = useAppStore((state) => state.libraryRoots);
+  const missing = useAppStore((state) => state.missing);
   const browse = useAppStore((state) => state.browse);
   const setPlaylists = useAppStore((state) => state.setPlaylists);
   const setLibraryRoots = useAppStore((state) => state.setLibraryRoots);
@@ -98,6 +99,7 @@ export function LibraryNav({
         <div className="mb-3 flex flex-col gap-0.5">
           {libraryRoots.map((path) => {
             const active = browse.kind === "folder" && browse.path === path;
+            const gone = missing.some((item) => item.scope === "library" && item.path === path);
             return (
               <div
                 key={path}
@@ -114,7 +116,10 @@ export function LibraryNav({
                   className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
                 >
                   <Music size={15} className="shrink-0 text-app-muted" />
-                  <span className="truncate text-[14px] font-semibold">{baseName(path)}</span>
+                  <span className={`truncate text-[14px] font-semibold ${gone ? "text-app-danger" : ""}`}>
+                    {baseName(path)}
+                    {gone ? " missing" : ""}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -359,7 +364,29 @@ function folderMenu(
   setStatus: (status: string | null) => void,
 ): MenuEntry[] {
   const playlists = useAppStore.getState().playlists;
+  const gone = useAppStore.getState().missing.some((item) => item.scope === "library" && item.path === path);
   return [
+    ...(gone
+      ? ([
+          {
+            kind: "action",
+            action: {
+              label: "Locate album",
+              onClick: () => {
+                void locateMissing({
+                  scope: "library",
+                  id: path,
+                  path,
+                  kind: "dir",
+                  label: baseName(path),
+                }).catch((error) => {
+                  setStatus(errorMessage(error, "Couldn't update that path"));
+                });
+              },
+            },
+          },
+        ] satisfies MenuEntry[])
+      : []),
     {
       kind: "action",
       action: {

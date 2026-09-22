@@ -360,6 +360,21 @@ mod tests {
     }
 
     #[test]
+    fn collect_sees_files_added_and_removed_later() {
+        let dir = tempfile::tempdir().unwrap();
+        let album = dir.path().join("album");
+        std::fs::create_dir_all(&album).unwrap();
+        std::fs::write(album.join("a.mp3"), []).unwrap();
+        assert_eq!(collect_tracks(dir.path()).unwrap().len(), 1);
+        std::fs::write(album.join("b.flac"), []).unwrap();
+        assert_eq!(collect_tracks_fast(dir.path()).unwrap().len(), 2);
+        std::fs::remove_file(album.join("a.mp3")).unwrap();
+        let tracks = collect_tracks(dir.path()).unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert!(tracks[0].path.ends_with("b.flac"));
+    }
+
+    #[test]
     fn collect_nested_folders() {
         let dir = tempfile::tempdir().unwrap();
         let album = dir.path().join("album");

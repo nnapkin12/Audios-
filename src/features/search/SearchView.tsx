@@ -105,12 +105,13 @@ export function SearchView() {
   }
 
   return (
-    <section className="min-h-0 flex-1 overflow-auto px-8 py-6">
-      <div className="mx-auto flex max-w-3xl flex-col gap-6">
+    <section className="page-scroll flex flex-col">
+      <div className="flex w-full flex-col gap-6">
         <div>
           <h1 className="text-[28px] font-semibold tracking-tight">Search</h1>
           <p className="mt-2 max-w-2xl text-[15px] font-medium leading-6 text-app-muted">
-            Find songs and artists. Play starts right away. Save a copy if you want to keep it.
+            Find songs on YouTube and SoundCloud. Paste a link from either, or from
+            another site yt-dlp supports. Play starts right away. Save a copy if you want to keep it.
           </p>
         </div>
 
@@ -154,7 +155,7 @@ export function SearchView() {
           </p>
         ) : null}
 
-        <ul className="flex flex-col gap-1">
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-2">
           {results.map((hit) => {
             const fetching = fetchingUrl === hit.url;
             const currentHit = hitIsCurrent(hit, current);

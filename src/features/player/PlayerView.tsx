@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Pencil, Search, X } from "lucide-react";
 import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
-import { filterTracks, invalidateBrowse, openBrowsePage } from "@/features/player/browse";
+import { filterTracks, invalidateBrowse, locateMissing, openBrowsePage } from "@/features/player/browse";
 import { LibraryHome } from "@/features/player/LibraryHome";
 import { LibraryNav } from "@/features/player/Playlists";
 import { TrackList } from "@/features/player/TrackList";
@@ -26,6 +26,7 @@ export function PlayerView() {
   const playlists = useAppStore((state) => state.playlists);
   const currentPath = useAppStore((state) => state.snapshot?.current?.path ?? null);
   const playing = useAppStore((state) => state.snapshot?.playing ?? false);
+  const missing = useAppStore((state) => state.missing);
   const setStatus = useAppStore((state) => state.setStatus);
   const setLibraryRoots = useAppStore((state) => state.setLibraryRoots);
   const setPlaylists = useAppStore((state) => state.setPlaylists);
@@ -52,6 +53,13 @@ export function PlayerView() {
   const visibleTracks = useMemo(
     () => filterTracks(pageTracks, listQuery),
     [pageTracks, listQuery],
+  );
+  const missingHere = missing.filter((item) =>
+    browse.kind === "playlist"
+      ? item.scope === "playlist" && item.id === browse.id
+      : browse.kind === "folder"
+        ? item.scope === "library" && item.path === browse.path
+        : false,
   );
 
   async function openFile() {
@@ -222,7 +230,7 @@ export function PlayerView() {
 
   return (
     <section className="flex min-h-0 flex-1">
-      <div className="flex w-[400px] shrink-0 flex-col border-r border-app-line">
+      <div className="player-nav flex shrink-0 flex-col border-r border-app-line">
         <div className="px-3 pb-2 pt-3">
           <button
             type="button"
@@ -248,9 +256,9 @@ export function PlayerView() {
           <LibraryHome />
         ) : (
           <>
-            <div className="flex flex-col gap-4 px-5 py-4">
+            <div className="flex flex-wrap items-end justify-between gap-4 px-5 py-4">
               {browse.kind === "playlist" && playlist ? (
-                <div className="flex flex-col items-center text-center">
+                <div className="flex min-w-[16rem] flex-1 flex-wrap items-end gap-4">
                   <button
                     type="button"
                     title={playlist.hasCover ? "Change picture" : "Add picture"}
@@ -279,13 +287,14 @@ export function PlayerView() {
                     <PlaylistCover
                       id={playlist.id}
                       iconSize={56}
-                      className="h-48 w-48 rounded-2xl shadow-[0_18px_40px_rgb(0_0_0_/_0.28)]"
+                      className="h-36 w-36 rounded-2xl shadow-[0_18px_40px_rgb(0_0_0_/_0.28)] sm:h-44 sm:w-44"
                     />
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 text-[13px] font-semibold text-white opacity-0 group-hover:opacity-100">
                       {playlist.hasCover ? "Change" : "Add picture"}
                     </span>
                   </button>
-                  <p className="mt-4 text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
+                  <div className="min-w-0 flex-1 pb-1 text-left">
+                  <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
                     Playlist
                   </p>
                   {renaming ? (
@@ -301,11 +310,11 @@ export function PlayerView() {
                         value={draftName}
                         onChange={(event) => setDraftName(event.target.value)}
                         onBlur={() => void commitRename()}
-                        className="w-full rounded-md border border-app-border bg-app px-2 py-1 text-center text-[22px] font-semibold text-app-text"
+                        className="w-full rounded-md border border-app-border bg-app px-2 py-1 text-[22px] font-semibold text-app-text"
                       />
                     </form>
                   ) : (
-                    <div className="mt-1 flex items-center justify-center gap-2">
+                    <div className="mt-1 flex items-center gap-2">
                       <p className="truncate text-[22px] font-semibold text-app-text">{title}</p>
                       <button
                         type="button"
@@ -321,6 +330,7 @@ export function PlayerView() {
                     </div>
                   )}
                   <p className="text-[14px] font-medium text-app-muted">{countLabel}</p>
+                  </div>
                 </div>
               ) : (
                 <div className="min-w-0">
@@ -331,7 +341,7 @@ export function PlayerView() {
                   <p className="text-[14px] font-medium text-app-muted">{countLabel}</p>
                 </div>
               )}
-              <div className={`flex shrink-0 gap-2 ${browse.kind === "playlist" ? "justify-center" : "justify-end"}`}>
+              <div className="flex shrink-0 flex-wrap gap-2">
                 {browse.kind === "playlist" && playlist ? (
                   <>
                     <button
@@ -362,6 +372,26 @@ export function PlayerView() {
                 </button>
               </div>
             </div>
+            {missingHere.length > 0 ? (
+              <div className="mx-5 mb-3 flex items-center justify-between gap-3 rounded-xl border border-app-border bg-app-raised px-4 py-3">
+                <p className="text-[14px] font-medium leading-5 text-app-text">
+                  Can't find {missingHere.length === 1 ? missingHere[0].label : `${missingHere.length} items`}.
+                  Point Audios! at the song or album.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const album = missingHere.find((item) => item.kind === "dir") ?? missingHere[0];
+                    void locateMissing(album, missingHere.length > 1 || album.kind === "dir").catch((error) => {
+                      setStatus(errorMessage(error, "Couldn't update that path"));
+                    });
+                  }}
+                  className="shrink-0 rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg"
+                >
+                  Locate
+                </button>
+              </div>
+            ) : null}
             {pageTracks.length > 0 || listQuery ? (
               <ListSearch value={listQuery} onChange={setListQuery} />
             ) : null}

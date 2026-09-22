@@ -1,3 +1,4 @@
+mod convert;
 pub mod engine;
 pub mod queue;
 pub mod scan;
@@ -15,7 +16,7 @@ use crate::persist::Store;
 
 use self::engine::{PlayerEngine, RodioEngine};
 use self::queue::{Queue, RepeatMode};
-use self::scan::{collect_tracks, replaygain_multiplier, FolderNode, Track};
+use self::scan::{collect_tracks, replaygain_multiplier, track_from_path, FolderNode, Track};
 
 pub const STATE_EVENT: &str = "player://state";
 pub const TICK_EVENT: &str = "player://tick";
@@ -397,6 +398,31 @@ impl Player {
         Ok(self.snapshot())
     }
 
+    pub fn refresh_metadata(&self, paths: &[String]) -> Vec<Track> {
+        let mut fresh = Vec::new();
+        for path in paths {
+            if !Path::new(path).is_file() {
+                continue;
+            }
+            let track = track_from_path(Path::new(path));
+            crate::tags::forget_thumb(path);
+            fresh.push(track);
+        }
+        if fresh.is_empty() {
+            return fresh;
+        }
+        {
+            let mut logic = self.logic.lock().expect("player lock");
+            for track in &mut logic.queue.tracks {
+                if let Some(next) = fresh.iter().find(|item| item.path == track.path) {
+                    *track = next.clone();
+                }
+            }
+        }
+        self.emit_state();
+        fresh
+    }
+
     pub fn set_eq(&self, update: EqUpdate) -> AppResult<PlayerSnapshot> {
         let params = eq::EqParams::from_update(&update);
         {
@@ -474,7 +500,9 @@ impl Player {
     }
 
     fn load_and_maybe_play(&self, path: &str, play: bool) -> AppResult<()> {
-        self.engine.set_uri(Path::new(path))?;
+        // The queue keeps the library path. The engine gets a file Symphonia can open.
+        let playable = convert::for_playback(Path::new(path))?;
+        self.engine.set_uri(&playable)?;
         crate::search::drop_temps_except(Some(Path::new(path)));
         self.apply_volume();
         {
@@ -548,7 +576,10 @@ impl Player {
             return;
         }
         if let Some(path) = next {
-            if self.engine.set_gapless_next(Some(Path::new(&path))).is_ok() {
+            let Ok(playable) = convert::for_playback(Path::new(&path)) else {
+                return;
+            };
+            if self.engine.set_gapless_next(Some(&playable)).is_ok() {
                 self.logic.lock().expect("player lock").pending_gapless = true;
             }
         }

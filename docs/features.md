@@ -6,7 +6,8 @@
 
 ## Music Player
 
-- Open a file, folder, or nested folders, to create a 'library', or a playlist.
+- Open a file, folder, or nested folders, to create a library, or a playlist.
+- Library folders stay tied to the disk. Songs added or removed outside Audios! show up, including while the app is open and after a restart.
 - Library persist across restarts.
 - Queue with next / previous, repeat (off / one / all), and shuffle.
 - Gapless: the next song is appended to the rodio sink before the current track ends.
@@ -14,24 +15,25 @@
 - ReplayGain from track/album tags (can be toggled).
 - Leaving a song forgets its place.
 - Library, playlists, and a virtualized song list.
-- Playlists are created by pressing the +, Add a file, or folders to add the tracks inside it. A custom picture can be set from a local image. If none is set, Audios! builds a 2×2 mosaic from up to four embedded track pictures.
+- Playlists are created by pressing +. Add a file, or a folder. A folder stays linked, so songs added or removed on disk show up in that playlist. A custom picture can be set from a local image. If none is set, Audios! builds a 2×2 mosaic from up to four embedded track pictures.
 - Library and playlist views have a search bar that filters the open list.
 - Track rows show a play overlay on the cover when you hover, the current playing track shows pause instead, and clicking it pauses.
-- Now-playing bar plus a full now-playing view (`f` to open, `Esc` to close).
+- Now-playing bar plus a full now-playing view (`f` to open, `Esc` to close). The full view takes its colors from the album art. The rest of the app stays on your theme.
+- If a song or album folder was moved or renamed, Audios! relinks it when the file name is unique. Otherwise the item stays listed and **Locate** asks you to point at the new path.
 - Transport keys: Space play/pause, arrows seek ±5s, `n` / `p` next / previous.
 - Frameless title bar with custom minimize / maximize / close on the top right.
 
 ## Music Search (and save)
 
-- `yt-dlp` `ytsearch` lists titles, watch URLs, and thumbnails. Each result shows the watch URL and can open it in the browser.
+- `yt-dlp` lists YouTube and SoundCloud. Paste a link to play a track from another site yt-dlp supports. Each result shows the page URL and can open it in the browser.
 - Play downloads a temp file, remuxes it so rodio can decode it, then plays it.
 - Temp files are deleted when a different search track starts.
 - Download button on each entry, keeps a copy via the system save dialog.
-- Accepts a search string or a YouTube URL.
+- Accepts a search string, or a link from YouTube, SoundCloud, or another site yt-dlp supports.
 - Needs a current yt-dlp (distro packages are often stale), ffmpeg, and curl.
 - Queries that include both artist and title usually rank better than a title alone.
 
-Search is YouTube-backed. It does not log into Spotify and cannot pull Spotify-hosted audio.
+Search lists YouTube and SoundCloud. A pasted link can come from another site yt-dlp supports. It does not log into Spotify and cannot pull Spotify-hosted audio.
 
 ## Metadata Editor
 
@@ -39,7 +41,8 @@ Search is YouTube-backed. It does not log into Spotify and cannot pull Spotify-h
 - Artwork add / remove / export. Find artwork searches the track name (same listing as Search) and can embed a thumbnail without leaving the editor.
 - Lyrics, ReplayGain, MusicBrainz IDs, custom frames.
 - Batch apply across a folder of files.
-- Writes go through a temp file, then replace the original.
+- Writes go through a temp file, then replace the original. Saving updates the open list and the song that is playing, without a restart.
+- Save stays pinned at the bottom of the editor. Ctrl+S saves the open file.
 
 ## Theme & Appearance
 

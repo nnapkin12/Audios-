@@ -5,8 +5,10 @@ mod library;
 mod persist;
 mod player;
 mod playlists;
+mod relink;
 mod search;
 mod tags;
+mod watch;
 
 use persist::Store;
 use player::Player;
@@ -19,8 +21,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let persist = Store::load();
+            playlists::sync(&persist);
+            library::prune_missing(&persist);
             app.manage(persist.clone());
-            app.manage(Player::new(app.handle().clone(), persist));
+            app.manage(Player::new(app.handle().clone(), persist.clone()));
+            watch::spawn(app.handle().clone(), persist);
             apply_window_icon(app);
             Ok(())
         })
@@ -64,6 +69,7 @@ pub fn run() {
             commands::remove_custom_field,
             commands::cover_art,
             commands::cover_thumb,
+            commands::refresh_metadata,
             commands::list_playlists,
             commands::create_playlist,
             commands::rename_playlist,
@@ -73,6 +79,8 @@ pub fn run() {
             commands::set_playlist_cover,
             commands::clear_playlist_cover,
             commands::playlist_cover,
+            commands::list_missing,
+            commands::relink_missing,
             commands::get_appearance,
             commands::set_appearance,
             commands::set_minimize_movement,

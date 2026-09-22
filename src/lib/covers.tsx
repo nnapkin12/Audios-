@@ -26,6 +26,11 @@ function lruSet<T>(map: Map<string, T>, key: string, value: T, cap: number): voi
   }
 }
 
+export function dropCover(path: string): void {
+  cache.delete(path);
+  inflight.delete(path);
+}
+
 export function cachedCover(path: string): string | null | undefined {
   return cache.has(path) ? cache.get(path) ?? null : undefined;
 }

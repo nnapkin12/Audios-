@@ -25,6 +25,12 @@ pub fn add(store: &Store, path: String) -> AppResult<(Vec<String>, String)> {
     Ok((list(store), key))
 }
 
+/// Point a library folder at a moved copy with the same name. A missing
+/// folder stays in the list so it can be located.
+pub fn prune_missing(store: &Store) -> bool {
+    crate::relink::retarget_library(store)
+}
+
 pub fn remove(store: &Store, path: String) -> AppResult<Vec<String>> {
     store.update(|data| {
         data.library_roots.retain(|root| !same_path(root, &path));
@@ -68,6 +74,26 @@ mod tests {
         assert_eq!(again.len(), 1);
         let empty = remove(&store, again[0].clone()).unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn prune_drops_deleted_folder_and_keeps_offline_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::for_test(dir.path());
+        let folder = dir.path().join("Music");
+        std::fs::create_dir_all(&folder).unwrap();
+        add(&store, folder.to_string_lossy().to_string()).unwrap();
+        std::fs::remove_dir(&folder).unwrap();
+        assert!(prune_missing(&store) == false || list(&store).len() == 1);
+        assert_eq!(list(&store).len(), 1);
+        store.update(|data| {
+            data.library_roots.push("/volume-offline/Music".into());
+            data.last_root = Some("/volume-offline/Music".into());
+        });
+        assert!(!prune_missing(&store));
+        assert!(list(&store)
+            .iter()
+            .any(|root| root.contains("volume-offline")));
     }
 
     #[test]

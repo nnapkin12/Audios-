@@ -62,13 +62,31 @@ pub fn search_stream(query: &str) -> AppResult<MediaHit> {
 
 pub fn search_media(query: &str) -> AppResult<Vec<MediaHit>> {
     let query = clean_query(query)?;
+    if is_url(&query) {
+        return flat_search(&query);
+    }
+    let mut hits = Vec::new();
+    let mut last_error = None;
     for target in list_query_variants(&query) {
-        let hits = flat_search(&target)?;
-        if !hits.is_empty() {
-            return Ok(hits);
+        match flat_search(&target) {
+            Ok(found) if !found.is_empty() => {
+                merge_hits(&mut hits, found);
+                break;
+            }
+            Ok(_) => {}
+            Err(error) => last_error = Some(error),
         }
     }
-    Err(AppError::msg("no search results"))
+    for target in soundcloud_queries(&query) {
+        match flat_search(&target) {
+            Ok(found) => merge_hits(&mut hits, found),
+            Err(error) => last_error = Some(error),
+        }
+    }
+    if hits.is_empty() {
+        return Err(last_error.unwrap_or_else(|| AppError::msg("no search results")));
+    }
+    Ok(hits)
 }
 
 /// Metadata-only cover search. Four thumbnails, no audio download.
@@ -269,12 +287,21 @@ fn resolve_hit(query: &str) -> AppResult<MediaHit> {
             .next()
             .ok_or_else(|| AppError::msg("no playable result"));
     }
-    for target in play_query_variants(query) {
-        if let Some(hit) = flat_search(&target)?.into_iter().next() {
-            return Ok(hit);
+    let mut last_error = None;
+    for target in play_query_variants(query)
+        .into_iter()
+        .chain(soundcloud_queries(query))
+    {
+        match flat_search(&target) {
+            Ok(hits) => {
+                if let Some(hit) = hits.into_iter().next() {
+                    return Ok(hit);
+                }
+            }
+            Err(error) => last_error = Some(error),
         }
     }
-    Err(AppError::msg("no playable result"))
+    Err(last_error.unwrap_or_else(|| AppError::msg("no playable result")))
 }
 
 fn flat_search(target: &str) -> AppResult<Vec<MediaHit>> {
@@ -311,7 +338,7 @@ struct PickedAudio {
 
 fn probe_info(url: &str) -> AppResult<Value> {
     let mut errors = Vec::new();
-    for clients in PLAYER_CLIENTS.iter().copied().map(Some).chain([None]) {
+    for clients in client_attempts(url) {
         let mut args = vec!["-J", "--skip-download", "--no-playlist"];
         if let Some(clients) = clients {
             args.extend(["--extractor-args", clients]);
@@ -421,7 +448,7 @@ fn download_default(url: &str) -> AppResult<PathBuf> {
 
 fn download_with_clients(url: &str, extra: &[&str]) -> AppResult<PathBuf> {
     let mut errors = Vec::new();
-    for clients in PLAYER_CLIENTS.iter().copied().map(Some).chain([None]) {
+    for clients in client_attempts(url) {
         match download_template(url, extra, clients) {
             Ok(path) => return Ok(path),
             Err(error) => errors.push(error),
@@ -430,6 +457,19 @@ fn download_with_clients(url: &str, extra: &[&str]) -> AppResult<PathBuf> {
     Err(errors
         .pop()
         .unwrap_or_else(|| AppError::msg("could not cache that stream")))
+}
+
+fn client_attempts(url: &str) -> Vec<Option<&'static str>> {
+    if youtube_page(url) {
+        PLAYER_CLIENTS
+            .iter()
+            .copied()
+            .map(Some)
+            .chain([None])
+            .collect()
+    } else {
+        vec![None]
+    }
 }
 
 fn download_template(url: &str, extra: &[&str], clients: Option<&str>) -> AppResult<PathBuf> {
@@ -686,7 +726,7 @@ fn find_ffmpeg() -> AppResult<PathBuf> {
     })
 }
 
-fn find_tool(name: &str) -> Option<PathBuf> {
+pub(crate) fn find_tool(name: &str) -> Option<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
         let home = PathBuf::from(home);
@@ -807,6 +847,11 @@ fn text_field(value: &Value, keys: &[&str]) -> Option<String> {
 }
 
 fn locator_from_value(value: &Value) -> Option<String> {
+    // SoundCloud and other sites put the real page in webpage_url. A short id
+    // must not be turned into a YouTube watch URL when that page is present.
+    if let Some(page) = http_field(value, "webpage_url").or_else(|| http_field(value, "url")) {
+        return Some(page);
+    }
     if let Some(id) = value.get("id").and_then(Value::as_str).map(str::trim) {
         if youtube_video_id(id) {
             return Some(format!("https://www.youtube.com/watch?v={id}"));
@@ -819,6 +864,25 @@ fn locator_from_value(value: &Value) -> Option<String> {
         .map(str::trim)
         .filter(|item| !item.is_empty())
         .map(str::to_string)
+}
+
+fn http_field(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|item| item.starts_with("http://") || item.starts_with("https://"))
+        .map(str::to_string)
+}
+
+pub fn youtube_page(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains("://youtube.com")
+        || lower.contains("://www.youtube.com")
+        || lower.contains("://m.youtube.com")
+        || lower.contains("://music.youtube.com")
+        || lower.contains("://youtu.be/")
+        || lower.contains("ytsearch")
 }
 
 fn youtube_video_id(id: &str) -> bool {
@@ -873,13 +937,37 @@ pub fn cover_query_variants(query: &str) -> Vec<String> {
 }
 
 fn add_search(queries: &mut Vec<String>, terms: &str, count: u8) {
+    add_source(queries, "ytsearch", terms, count);
+}
+
+pub fn soundcloud_queries(query: &str) -> Vec<String> {
+    if is_url(query) {
+        return Vec::new();
+    }
+    let mut queries = Vec::new();
+    let cleaned = strip_search_noise(query);
+    let terms = if cleaned.is_empty() { query } else { &cleaned };
+    add_source(&mut queries, "scsearch", terms, 5);
+    queries
+}
+
+fn add_source(queries: &mut Vec<String>, prefix: &str, terms: &str, count: u8) {
     let terms = collapse_ws(terms);
     if terms.is_empty() {
         return;
     }
-    let query = format!("ytsearch{count}:{terms}");
+    let query = format!("{prefix}{count}:{terms}");
     if !queries.iter().any(|item| item == &query) {
         queries.push(query);
+    }
+}
+
+fn merge_hits(hits: &mut Vec<MediaHit>, found: Vec<MediaHit>) {
+    for hit in found {
+        if hits.iter().any(|item| item.url == hit.url) {
+            continue;
+        }
+        hits.push(hit);
     }
 }
 
@@ -985,7 +1073,7 @@ const CHILD_ENV_STRIP: &[&str] = &[
     "GI_TYPELIB_PATH",
 ];
 
-fn spawn_tool(bin: impl AsRef<OsStr>) -> Command {
+pub(crate) fn spawn_tool(bin: impl AsRef<OsStr>) -> Command {
     let mut command = Command::new(bin);
     // AppImage AppRun exports GTK/GIO/Python paths that point at the squashfs.
     // Host yt-dlp is a Python zipapp; ffmpeg and curl need the host linker
@@ -1234,8 +1322,8 @@ mod tests {
             hits_from_json(&value),
             vec![MediaHit {
                 title: "Example Song".into(),
-                url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ".into(),
-                page_url: Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ".into()),
+                url: "https://example.com/watch?v=dQw4w9WgXcQ".into(),
+                page_url: Some("https://example.com/watch?v=dQw4w9WgXcQ".into()),
                 thumbnail_url: Some("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg".into()),
                 channel: None,
             }]
@@ -1289,6 +1377,32 @@ mod tests {
             .iter()
             .any(|item| item.contains("The Beatles - Blackbird")));
         assert!(!queries.iter().any(|item| item == "ytsearch5:The Beatles"));
+    }
+
+    #[test]
+    fn soundcloud_search_uses_cleaned_terms() {
+        assert_eq!(
+            soundcloud_queries("Helium (From the Film)"),
+            vec!["scsearch5:Helium".to_string()]
+        );
+        assert!(soundcloud_queries("https://soundcloud.com/artist/song").is_empty());
+    }
+
+    #[test]
+    fn soundcloud_page_is_not_rewritten_as_youtube() {
+        let value = json!({
+            "id": "aaaaaaaaaaa",
+            "title": "Lanius",
+            "webpage_url": "https://soundcloud.com/benprunty/lanius-battle",
+            "uploader": "Ben Prunty"
+        });
+        let hits = hits_from_json(&value);
+        assert_eq!(
+            hits[0].url,
+            "https://soundcloud.com/benprunty/lanius-battle"
+        );
+        assert!(!youtube_page(&hits[0].url));
+        assert!(youtube_page("https://www.youtube.com/watch?v=aaaaaaaaaaa"));
     }
 
     #[test]

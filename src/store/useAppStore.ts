@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { pictureSrc } from "@/lib/format";
 import { applyAppearance, type CustomTheme } from "@/lib/theme";
 import { applyMotion } from "@/lib/motion";
-import type { BrowsePage, Playlist, PlayerSnapshot, Tick, Track } from "@/lib/types";
+import type { BrowsePage, MissingItem, Playlist, PlayerSnapshot, Tick, Track } from "@/lib/types";
 
 export type AppTab = "player" | "search" | "tags" | "settings";
 export type StatusTone = "error" | "info";
@@ -17,6 +17,7 @@ interface AppState {
   statusTone: StatusTone;
   playlists: Playlist[];
   libraryRoots: string[];
+  missing: MissingItem[];
   browse: BrowsePage;
   pageTracks: Track[];
   pageLoading: boolean;
@@ -32,6 +33,7 @@ interface AppState {
   setStatus: (status: string | null, tone?: StatusTone) => void;
   setPlaylists: (playlists: Playlist[]) => void;
   setLibraryRoots: (roots: string[]) => void;
+  setMissing: (missing: MissingItem[]) => void;
   setBrowse: (browse: BrowsePage) => void;
   setPageTracks: (tracks: Track[]) => void;
   setPageLoading: (loading: boolean) => void;
@@ -52,6 +54,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   statusTone: "error",
   playlists: [],
   libraryRoots: [],
+  missing: [],
   browse: { kind: "home" },
   pageTracks: [],
   pageLoading: false,
@@ -73,6 +76,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ status, statusTone: status ? tone : "error" }),
   setPlaylists: (playlists) => set({ playlists }),
   setLibraryRoots: (libraryRoots) => set({ libraryRoots }),
+  setMissing: (missing) => set({ missing }),
   setBrowse: (browse) => set({ browse }),
   setPageTracks: (pageTracks) => set({ pageTracks }),
   setPageLoading: (pageLoading) => set({ pageLoading }),

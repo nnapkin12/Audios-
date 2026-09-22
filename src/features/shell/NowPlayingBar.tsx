@@ -28,7 +28,7 @@ export function NowPlayingBar() {
   const shuffle = snapshot?.shuffle ?? false;
 
   return (
-    <footer className="grid h-[92px] shrink-0 grid-cols-[1fr_minmax(280px,2fr)_1fr] items-center gap-4 border-t-2 border-app-bar-line bg-app-bar px-4 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]">
+    <footer className="now-playing-bar h-[92px] shrink-0 items-center gap-4 border-t-2 border-app-bar-line bg-app-bar px-4 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]">
       <button
         type="button"
         onClick={() => setNowPlayingOpen(true)}

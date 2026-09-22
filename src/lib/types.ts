@@ -38,6 +38,14 @@ export interface MediaHit {
   channel?: string;
 }
 
+export interface MissingItem {
+  scope: "playlist" | "library" | string;
+  id: string;
+  path: string;
+  kind: "file" | "dir" | string;
+  label: string;
+}
+
 export interface LibraryChange {
   roots: string[];
   path: string;

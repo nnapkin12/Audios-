@@ -63,8 +63,8 @@ export function SettingsView() {
   }
 
   return (
-    <section className="min-h-0 flex-1 overflow-auto px-8 py-6">
-      <div className="mx-auto flex max-w-3xl flex-col gap-8">
+    <section className="page-scroll flex flex-col">
+      <div className="flex w-full flex-col gap-8">
         <div>
           <h1 className="text-[28px] font-semibold tracking-tight">Settings</h1>
         </div>

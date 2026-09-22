@@ -73,6 +73,7 @@ pub fn play_playlist(
     id: String,
     start_path: Option<String>,
 ) -> AppResult<PlayerSnapshot> {
+    crate::playlists::sync(&store);
     let playlists = crate::playlists::list(&store);
     let playlist = playlists
         .iter()
@@ -110,6 +111,7 @@ pub fn scan_tracks(path: String, fast: bool) -> AppResult<Vec<Track>> {
 
 #[tauri::command]
 pub fn scan_playlist(store: State<Store>, id: String, fast: bool) -> AppResult<Vec<Track>> {
+    crate::playlists::sync(&store);
     let playlists = crate::playlists::list(&store);
     let playlist = playlists
         .iter()
@@ -235,6 +237,11 @@ pub fn remove_custom_field(path: String, key: String) -> AppResult<TagDoc> {
 }
 
 #[tauri::command]
+pub fn refresh_metadata(player: State<Player>, paths: Vec<String>) -> Vec<Track> {
+    player.refresh_metadata(&paths)
+}
+
+#[tauri::command]
 pub fn cover_art(path: String) -> AppResult<Option<CoverArt>> {
     crate::tags::cover_for(&path)
 }
@@ -299,6 +306,22 @@ pub fn clear_playlist_cover(store: State<Store>, id: String) -> AppResult<Vec<Pl
 #[tauri::command]
 pub fn playlist_cover(store: State<Store>, id: String) -> AppResult<Option<CoverArt>> {
     crate::playlists::cover(&store, &id)
+}
+
+#[tauri::command]
+pub fn list_missing(store: State<Store>) -> Vec<crate::relink::MissingItem> {
+    crate::relink::list_missing(&store)
+}
+
+#[tauri::command]
+pub fn relink_missing(
+    store: State<Store>,
+    scope: String,
+    id: String,
+    path: String,
+    new_path: String,
+) -> AppResult<()> {
+    crate::relink::relink(&store, &scope, &id, &path, &new_path)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

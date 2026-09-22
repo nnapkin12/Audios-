@@ -8,7 +8,7 @@ use crate::eq::EqPersist;
 use crate::error::AppResult;
 use crate::player::queue::RepeatMode;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaylistItem {
     pub path: String,

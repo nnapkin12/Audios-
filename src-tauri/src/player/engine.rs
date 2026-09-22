@@ -234,6 +234,10 @@ fn load_into(
     Ok(())
 }
 
+pub(crate) fn probe_audio(path: &Path) -> AppResult<()> {
+    decoder_for(path).map(|_| ())
+}
+
 fn decoder_for(path: &Path) -> AppResult<Decoder<BufReader<File>>> {
     // Symphonia can panic on some MP4/AAC files instead of returning Err.
     let file = File::open(path)?;

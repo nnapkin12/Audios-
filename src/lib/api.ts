@@ -4,6 +4,7 @@ import type {
   CoverArt,
   LibraryChange,
   MediaHit,
+  MissingItem,
   Playlist,
   PlayerSnapshot,
   RepeatMode,
@@ -162,6 +163,9 @@ export const api = {
   scanPlaylist: (id: string, fast = false) =>
     invoke<Track[]>("scan_playlist", { id, fast }),
   listLibraryRoots: () => invoke<string[]>("list_library_roots"),
+  listMissing: () => invoke<MissingItem[]>("list_missing"),
+  relinkMissing: (scope: string, id: string, path: string, newPath: string) =>
+    invoke<void>("relink_missing", { scope, id, path, newPath }),
   addLibraryRoot: (path: string) => invoke<LibraryChange>("add_library_root", { path }),
   removeLibraryRoot: (path: string) => invoke<string[]>("remove_library_root", { path }),
   setVolume: (volume: number) => invoke<PlayerSnapshot>("set_volume", { volume }),
@@ -189,6 +193,7 @@ export const api = {
     invoke<TagDoc>("add_custom_field", { path, key, value }),
   removeCustomField: (path: string, key: string) =>
     invoke<TagDoc>("remove_custom_field", { path, key }),
+  refreshTracks: (paths: string[]) => invoke<Track[]>("refresh_metadata", { paths }),
   coverArt: (path: string) => invoke<CoverArt | null>("cover_art", { path }),
   coverThumb: (path: string) => invoke<CoverArt | null>("cover_thumb", { path }),
   listPlaylists: () => invoke<Playlist[]>("list_playlists"),

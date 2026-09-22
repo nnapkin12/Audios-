@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ImagePlus, Save, Search, Trash2, Upload, X } from "lucide-react";
+import { applyTrackMeta } from "@/features/player/browse";
 import { api, isTauri, pickAudioFile, pickFolder, pickSavePath } from "@/lib/api";
 import { displayTitle, errorMessage, formatBytes, formatTime, pictureSrc } from "@/lib/format";
 import {
@@ -215,6 +216,7 @@ export function TagsView() {
       const next = await api.writeTags(doc.path, fields);
       setDoc(next);
       setFields(normalize(next));
+      applyTrackMeta(await api.refreshTracks([doc.path]));
       setStatus("Saved tags", "info");
     } catch (error) {
       setStatus(errorMessage(error, "Save failed"));
@@ -223,11 +225,24 @@ export function TagsView() {
     }
   }
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      const panel = document.querySelector("[data-tags-root]");
+      if (!panel || panel.closest(".hidden")) return;
+      event.preventDefault();
+      if (!busy && dirty && doc) void saveCurrent();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
   async function saveBatch() {
     if (paths.length === 0) return;
     setBusy(true);
     try {
       const count = await api.batchWrite(paths, fields, apply);
+      applyTrackMeta(await api.refreshTracks(paths));
       setStatus(`Updated ${count} files`, "info");
       if (doc) await loadPath(doc.path);
     } catch (error) {
@@ -245,6 +260,7 @@ export function TagsView() {
     try {
       const next = await api.addPicture(doc.path, data, imageMime(file), pictureKind);
       setDoc(next);
+      applyTrackMeta(await api.refreshTracks([doc.path]));
     } catch (error) {
       setStatus(errorMessage(error, "Could not add artwork"));
     } finally {
@@ -253,7 +269,7 @@ export function TagsView() {
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <section data-tags-root className="flex min-h-0 flex-1 flex-col">
       <div className="px-8 pt-6 pb-4">
         <h1 className="text-[28px] font-semibold tracking-tight">Metadata Editor</h1>
         <p className="mt-2 max-w-3xl text-[15px] font-medium leading-6 text-app-muted">
@@ -355,38 +371,18 @@ export function TagsView() {
             Drop a file or folder here
           </div>
         ) : (
-          <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-5 overflow-auto pb-16">
-            <header className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-[12px] text-app-muted">
-                  {doc.format} · {doc.tagType}
-                  {doc.sampleRate ? ` · ${doc.sampleRate} Hz` : ""}
-                  {doc.bitDepth ? ` · ${doc.bitDepth}-bit` : ""}
-                  {doc.bitrateKbps ? ` · ${doc.bitrateKbps} kbps` : ""}
-                  {` · ${formatTime(doc.durationMs)}`}
-                </p>
-                <h2 className="mt-1 break-all text-[15px]">{doc.path}</h2>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={busy || !dirty}
-                  onClick={() => void saveCurrent()}
-                  className="flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-[12px] text-app-text disabled:opacity-40"
-                >
-                  <Save size={13} />
-                  Save file
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || paths.length === 0 || apply.length === 0}
-                  onClick={() => void saveBatch()}
-                  className="flex items-center gap-1.5 rounded-md bg-white/[0.06] px-3 py-1.5 text-[12px] text-app-subtle disabled:opacity-40"
-                >
-                  <Upload size={13} />
-                  Apply to {paths.length}
-                </button>
-              </div>
+          <div className="flex min-h-0 w-full flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-auto">
+            <div className="flex flex-col gap-5 pb-6">
+            <header>
+              <p className="text-[12px] text-app-muted">
+                {doc.format} · {doc.tagType}
+                {doc.sampleRate ? ` · ${doc.sampleRate} Hz` : ""}
+                {doc.bitDepth ? ` · ${doc.bitDepth}-bit` : ""}
+                {doc.bitrateKbps ? ` · ${doc.bitrateKbps} kbps` : ""}
+                {` · ${formatTime(doc.durationMs)}`}
+              </p>
+              <h2 className="mt-1 break-all text-[15px]">{doc.path}</h2>
             </header>
 
             <FieldCard title="Common" fields={COMMON_FIELDS} values={fields} apply={apply} setApply={setApply} onChange={setFields} />
@@ -518,7 +514,10 @@ export function TagsView() {
                           <button
                             type="button"
                             onClick={() => {
-                              void api.removePicture(doc.path, picture.index).then(setDoc);
+                              void api.removePicture(doc.path, picture.index).then(async (next) => {
+                                setDoc(next);
+                                applyTrackMeta(await api.refreshTracks([doc.path]));
+                              });
                             }}
                           >
                             <Trash2 size={12} />
@@ -595,6 +594,33 @@ export function TagsView() {
                 </table>
               </div>
             </section>
+            </div>
+            </div>
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-app-line bg-app px-1 py-3">
+              <p className={`text-[13px] font-semibold ${dirty ? "text-app-text" : "text-app-muted"}`}>
+                {dirty ? "Unsaved changes" : "Saved"}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={busy || paths.length === 0 || apply.length === 0}
+                  onClick={() => void saveBatch()}
+                  className="flex items-center gap-1.5 rounded-md border border-app-border px-3 py-1.5 text-[13px] font-semibold text-app-subtle hover:bg-app-hover disabled:opacity-40"
+                >
+                  <Upload size={14} />
+                  Apply to {paths.length}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !dirty}
+                  onClick={() => void saveCurrent()}
+                  className="flex items-center gap-1.5 rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg disabled:opacity-40"
+                >
+                  <Save size={14} />
+                  Save
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -621,7 +647,7 @@ function FieldCard({
   return (
     <section className="rounded-xl border border-app-border bg-app-raised/70 p-4">
       <h3 className="mb-3 text-[15px] font-semibold text-app-text">{title}</h3>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {fields.map(([key, label]) => (
           <label key={key} className="block text-[13px] font-semibold text-app-muted">
             <span className="mb-1 flex items-center justify-between">

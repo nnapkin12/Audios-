@@ -1,14 +1,17 @@
-import { api } from "@/lib/api";
-import { errorMessage } from "@/lib/format";
-import { cacheKey, dropCachedTracks, getCachedTracks, setCachedTracks } from "@/lib/browseCache";
-import type { BrowsePage, Track } from "@/lib/types";
+import { api, pickAudioFile, pickFolder } from "@/lib/api";
+import { baseName, errorMessage } from "@/lib/format";
+import { cacheKey, dropCachedTracks, getCachedTracks, patchCachedTracks, setCachedTracks } from "@/lib/browseCache";
+import { dropCover } from "@/lib/covers";
+import type { BrowsePage, MissingItem, Track } from "@/lib/types";
 import { useAppStore } from "@/store/useAppStore";
 
 export function filterTracks(tracks: Track[], query: string): Track[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return tracks;
   return tracks.filter((track) => {
-    const hay = [track.title, track.artist, track.albumArtist, track.album]
+    const file = baseName(track.path);
+    const stem = file.replace(/\.[^.]+$/, "");
+    const hay = [track.title, track.artist, track.albumArtist, track.album, file, stem]
       .join(" ")
       .toLowerCase();
     return hay.includes(needle);
@@ -22,14 +25,62 @@ export function samePage(left: BrowsePage, right: BrowsePage): boolean {
   return left.kind === "home" && right.kind === "home";
 }
 
+export function applyTrackMeta(tracks: Track[]): void {
+  if (tracks.length === 0) return;
+  patchCachedTracks(tracks);
+  const byPath = new Map(tracks.map((track) => [track.path, track]));
+  const store = useAppStore.getState();
+  store.setPageTracks(store.pageTracks.map((track) => byPath.get(track.path) ?? track));
+  for (const track of tracks) dropCover(track.path);
+  const current = store.snapshot?.current?.path;
+  if (current && byPath.has(current)) void store.refreshCover(current);
+}
+
 export function invalidateBrowse(kind: "folder" | "playlist", id: string): void {
   dropCachedTracks(cacheKey(kind, id));
 }
 
-export async function openBrowsePage(page: BrowsePage, force = false): Promise<void> {
+export async function locateMissing(item: MissingItem, asFolder = false): Promise<void> {
+  const picked =
+    item.kind === "dir" || asFolder
+      ? await pickFolder("Locate album")
+      : await pickAudioFile("Locate song");
+  if (!picked) return;
+  await api.relinkMissing(item.scope, item.id, item.path, picked);
+  const [playlists, roots, missing] = await Promise.all([
+    api.listPlaylists(),
+    api.listLibraryRoots(),
+    api.listMissing(),
+  ]);
+  const store = useAppStore.getState();
+  store.setPlaylists(playlists);
+  store.setLibraryRoots(roots);
+  store.setMissing(missing);
+  const browse = store.browse;
+  if (browse.kind === "folder" && item.scope === "library" && browse.path === item.path && item.kind === "dir") {
+    await openBrowsePage({ kind: "folder", path: picked }, true);
+    return;
+  }
+  if (browse.kind !== "home") await openBrowsePage(browse, true);
+}
+
+let browseGeneration = 0;
+
+export function openBrowsePage(page: BrowsePage, force = false): Promise<void> {
   const store = useAppStore.getState();
   store.setBrowse(page);
   store.setTab("player");
+  return loadBrowse(page, force, true);
+}
+
+/** Re-read the open folder or playlist from disk without leaving the current tab. */
+export function refreshOpenBrowse(): Promise<void> {
+  return loadBrowse(useAppStore.getState().browse, false, false);
+}
+
+async function loadBrowse(page: BrowsePage, force: boolean, clearStatus: boolean): Promise<void> {
+  const ticket = ++browseGeneration;
+  const store = useAppStore.getState();
   if (page.kind === "home") {
     store.setPageTracks([]);
     store.setPageLoading(false);
@@ -37,39 +88,56 @@ export async function openBrowsePage(page: BrowsePage, force = false): Promise<v
   }
 
   const key = page.kind === "folder" ? cacheKey("folder", page.path) : cacheKey("playlist", page.id);
-  const cached = force ? undefined : getCachedTracks(key);
+  if (force) dropCachedTracks(key);
+  const cached = getCachedTracks(key);
   if (cached) {
     store.setPageTracks(cached);
     store.setPageLoading(false);
-    return;
+  } else {
+    store.setPageTracks([]);
+    store.setPageLoading(true);
   }
-
-  store.setPageTracks([]);
-  store.setPageLoading(true);
-  store.setStatus(null);
+  if (clearStatus) store.setStatus(null);
   try {
     const fast =
       page.kind === "folder"
         ? await api.scanTracks(page.path, true)
         : await api.scanPlaylist(page.id, true);
-    if (!samePage(useAppStore.getState().browse, page)) return;
-    store.setPageTracks(fast);
+    if (!current(ticket, page)) return;
+    const previous = useAppStore.getState().pageTracks;
+    const tagged = previous.some((track) => track.durationMs > 0 || track.artist || track.album);
+    if (!clearStatus && tagged && samePaths(previous, fast)) {
+      setCachedTracks(key, previous);
+      useAppStore.getState().setPageTracks(previous);
+      return;
+    }
+    useAppStore.getState().setPageTracks(fast);
 
     const full =
       page.kind === "folder"
         ? await api.scanTracks(page.path, false)
         : await api.scanPlaylist(page.id, false);
-    if (!samePage(useAppStore.getState().browse, page)) return;
+    if (!current(ticket, page)) return;
     setCachedTracks(key, full);
-    store.setPageTracks(full);
+    useAppStore.getState().setPageTracks(full);
   } catch (error) {
-    if (samePage(useAppStore.getState().browse, page)) {
-      store.setStatus(errorMessage(error, "Could not open that library"));
-      store.setPageTracks([]);
+    if (current(ticket, page)) {
+      useAppStore.getState().setStatus(errorMessage(error, "Could not open that library"));
+      if (!cached) useAppStore.getState().setPageTracks([]);
     }
   } finally {
-    if (samePage(useAppStore.getState().browse, page)) {
-      store.setPageLoading(false);
+    if (current(ticket, page)) {
+      useAppStore.getState().setPageLoading(false);
     }
   }
+}
+
+function current(ticket: number, page: BrowsePage): boolean {
+  return ticket === browseGeneration && samePage(useAppStore.getState().browse, page);
+}
+
+function samePaths(left: Track[], right: Track[]): boolean {
+  if (left.length !== right.length) return false;
+  const paths = new Set(left.map((track) => track.path));
+  return right.every((track) => paths.has(track.path));
 }

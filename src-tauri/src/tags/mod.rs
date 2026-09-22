@@ -176,6 +176,7 @@ pub fn read_tags(path: &str) -> AppResult<TagDoc> {
 
 pub fn write_tags(path: &str, fields: TagFields) -> AppResult<TagDoc> {
     mutate_tag(Path::new(path), |tag| apply_fields(tag, &fields, None))?;
+    forget_thumb(path);
     read_tags(path)
 }
 
@@ -188,6 +189,7 @@ pub fn batch_write(paths: Vec<String>, fields: TagFields, apply: Vec<String>) ->
         mutate_tag(Path::new(&path), |tag| {
             apply_fields(tag, &fields, Some(&apply))
         })?;
+        forget_thumb(&path);
         written += 1;
     }
     Ok(written)
@@ -209,6 +211,7 @@ pub fn add_picture(path: &str, data: Vec<u8>, mime: String, kind: String) -> App
     mutate_tag(Path::new(path), |tag| {
         tag.push_picture(picture);
     })?;
+    forget_thumb(path);
     read_tags(path)
 }
 
@@ -218,20 +221,21 @@ pub fn remove_picture(path: &str, index: usize) -> AppResult<TagDoc> {
             let _ = tag.remove_picture(index);
         }
     })?;
+    forget_thumb(path);
     read_tags(path)
 }
 
 pub fn export_picture(path: &str, index: usize, dest: &str) -> AppResult<()> {
-    let doc = read_tags(path)?;
-    let picture = doc
-        .pictures
-        .into_iter()
-        .find(|picture| picture.index == index)
+    let tagged = read_audio(Path::new(path))?;
+    let tag = tagged
+        .primary_tag()
+        .or_else(|| tagged.first_tag())
         .ok_or_else(|| AppError::msg("that picture is gone"))?;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(picture.data_base64)
-        .map_err(|error| AppError::msg(error.to_string()))?;
-    std::fs::write(dest, bytes)?;
+    let picture = tag
+        .pictures()
+        .get(index)
+        .ok_or_else(|| AppError::msg("that picture is gone"))?;
+    std::fs::write(dest, picture.data())?;
     Ok(())
 }
 
@@ -265,18 +269,24 @@ pub fn cover_for(path: &str) -> AppResult<Option<CoverArt>> {
         return Ok(None);
     }
     let tagged = read_audio(Path::new(path))?;
-    let tag = match tagged.primary_tag().or_else(|| tagged.first_tag()) {
-        Some(tag) => tag,
-        None => return Ok(None),
+    let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
+        return Ok(None);
     };
-    let pictures = pictures_from_tag(tag);
+    let pictures = tag.pictures();
     let chosen = pictures
         .iter()
-        .find(|picture| picture.kind == "front")
+        .find(|picture| picture_kind(picture.pic_type()) == "front")
         .or_else(|| pictures.first());
-    Ok(chosen.map(|picture| CoverArt {
-        mime: picture.mime.clone(),
-        data_base64: picture.data_base64.clone(),
+    let Some(picture) = chosen else {
+        return Ok(None);
+    };
+    let data_base64 = display_base64(picture.data(), 720);
+    if data_base64.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(CoverArt {
+        mime: "image/jpeg".into(),
+        data_base64,
     }))
 }
 
@@ -295,9 +305,11 @@ struct ThumbCache {
 
 pub fn cover_thumb(path: &str) -> AppResult<Option<CoverArt>> {
     {
-        let cache = thumb_cache().lock().expect("cover cache");
-        if let Some(hit) = cache.map.get(path) {
-            return Ok(hit.clone());
+        let mut cache = thumb_cache().lock().expect("cover cache");
+        if let Some(hit) = cache.map.get(path).cloned() {
+            cache.order.retain(|item| item != path);
+            cache.order.push_back(path.to_string());
+            return Ok(hit);
         }
     }
     let cover = match cover_for(path)? {
@@ -305,28 +317,71 @@ pub fn cover_thumb(path: &str) -> AppResult<Option<CoverArt>> {
         None => None,
     };
     let mut cache = thumb_cache().lock().expect("cover cache");
-    if cache.map.len() >= THUMB_CACHE_CAP {
-        if let Some(old) = cache.order.pop_front() {
-            cache.map.remove(&old);
-        }
+    cache.order.retain(|item| item != path);
+    while cache.map.len() >= THUMB_CACHE_CAP {
+        let Some(old) = cache.order.pop_front() else {
+            break;
+        };
+        cache.map.remove(&old);
     }
     cache.order.push_back(path.to_string());
     cache.map.insert(path.to_string(), cover.clone());
     Ok(cover)
 }
 
+pub fn forget_thumb(path: &str) {
+    let mut cache = thumb_cache().lock().expect("cover cache");
+    cache.map.remove(path);
+    cache.order.retain(|item| item != path);
+}
+
 fn shrink_cover(cover: &CoverArt) -> Option<CoverArt> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&cover.data_base64)
         .ok()?;
-    let image = image::load_from_memory(&bytes).ok()?;
-    let thumb = image.thumbnail(80, 80);
-    let mut out = Cursor::new(Vec::new());
-    thumb.write_to(&mut out, image::ImageFormat::Jpeg).ok()?;
+    let jpeg = bounded_jpeg(&bytes, 80)?;
     Some(CoverArt {
         mime: "image/jpeg".into(),
-        data_base64: base64::engine::general_purpose::STANDARD.encode(out.into_inner()),
+        data_base64: base64::engine::general_purpose::STANDARD.encode(jpeg),
     })
+}
+
+fn display_base64(data: &[u8], max_edge: u32) -> String {
+    if let Some(jpeg) = bounded_jpeg(data, max_edge) {
+        return base64::engine::general_purpose::STANDARD.encode(jpeg);
+    }
+    if data.len() <= 256 * 1024 {
+        return base64::engine::general_purpose::STANDARD.encode(data);
+    }
+    String::new()
+}
+
+fn bounded_jpeg(data: &[u8], max_edge: u32) -> Option<Vec<u8>> {
+    let mut reader = image::ImageReader::new(Cursor::new(data))
+        .with_guessed_format()
+        .ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_alloc = Some(32 * 1024 * 1024);
+    limits.max_image_width = Some(8_000);
+    limits.max_image_height = Some(8_000);
+    reader.limits(limits);
+    let image = reader.decode().ok()?;
+    let image = if image.width() <= max_edge && image.height() <= max_edge {
+        image
+    } else {
+        image.thumbnail(max_edge, max_edge)
+    };
+    let rgb = image.to_rgb8();
+    let mut out = Cursor::new(Vec::new());
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 80)
+        .encode(
+            rgb.as_raw(),
+            rgb.width(),
+            rgb.height(),
+            image::ExtendedColorType::Rgb8,
+        )
+        .ok()?;
+    Some(out.into_inner())
 }
 
 pub fn staging_path(path: &Path) -> PathBuf {
@@ -656,7 +711,7 @@ fn pictures_from_tag(tag: &Tag) -> Vec<PictureInfo> {
                 .map(|mime| mime.as_str().to_string())
                 .unwrap_or_else(|| "image/jpeg".into()),
             size: picture.data().len(),
-            data_base64: base64::engine::general_purpose::STANDARD.encode(picture.data()),
+            data_base64: display_base64(picture.data(), 640),
         })
         .collect()
 }
