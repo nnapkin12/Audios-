@@ -62,7 +62,11 @@ export function NowPlayingFull() {
           <TransportSeek onSeek={(ms) => void api.seek(ms)} />
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-5">
+        <div className="np-copy mt-6 grid grid-cols-[minmax(3.5rem,1fr)_auto_minmax(3.5rem,1fr)] items-center">
+          <div className="justify-self-end pr-4">
+            <SpeedControl />
+          </div>
+          <div className="flex items-center justify-center gap-5">
           <button
             type="button"
             title="Shuffle"
@@ -107,7 +111,8 @@ export function NowPlayingFull() {
               <Repeat key={repeat} size={22} className="t-pop" />
             )}
           </button>
-          <SpeedControl />
+          </div>
+          <span />
         </div>
         </div>
       </div>

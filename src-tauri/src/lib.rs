@@ -1,7 +1,11 @@
 mod commands;
+#[cfg(target_os = "linux")]
+mod desktop;
 mod eq;
 mod error;
 mod library;
+#[cfg(target_os = "linux")]
+mod media;
 mod persist;
 mod player;
 mod playlists;
@@ -24,8 +28,13 @@ pub fn run() {
             playlists::sync(&persist);
             library::prune_missing(&persist);
             app.manage(persist.clone());
-            app.manage(Player::new(app.handle().clone(), persist.clone()));
+            let player = Player::new(app.handle().clone(), persist.clone());
+            #[cfg(target_os = "linux")]
+            media::start(player.clone());
+            app.manage(player);
             watch::spawn(app.handle().clone(), persist);
+            #[cfg(target_os = "linux")]
+            desktop::install();
             apply_window_icon(app);
             Ok(())
         })

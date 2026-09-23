@@ -6,7 +6,7 @@ export function Titlebar() {
   return (
     <header
       data-tauri-drag-region
-      className="drag-region relative flex h-10 shrink-0 items-center border-b border-app-line bg-app-raised"
+      className="drag-region relative z-30 flex h-10 shrink-0 items-center border-b border-app-line bg-app-raised"
     >
       <p
         data-tauri-drag-region

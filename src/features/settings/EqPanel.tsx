@@ -156,7 +156,7 @@ export function EqPanel() {
   const autoPre = effectivePreamp(eq.gains, eq.preamp, eq.autoPreamp);
 
   return (
-    <div className="flex flex-col gap-5 border-t border-app-line pt-5">
+    <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-4">
         <h3 className="text-[16px] font-semibold text-app-text">Equalizer</h3>
         <p className="text-[13px] font-semibold text-app-subtle">{eqStatus(eq)}</p>

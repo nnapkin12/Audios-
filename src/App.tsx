@@ -3,6 +3,7 @@ import { NowPlayingBar } from "@/features/shell/NowPlayingBar";
 import { NowPlayingFull } from "@/features/shell/NowPlayingFull";
 import { Sidebar } from "@/features/shell/Sidebar";
 import { Titlebar } from "@/features/shell/Titlebar";
+import { WindowEdges } from "@/features/shell/WindowEdges";
 import { PlayerView } from "@/features/player/PlayerView";
 import { SearchView } from "@/features/search/SearchView";
 import { SettingsView } from "@/features/settings/SettingsView";
@@ -130,7 +131,8 @@ export default function App() {
   }, [applySnapshot, applyTick, setAppearance, setLibraryRoots, setMinimizeMovement, setNowPlayingOpen, setPlaylists, setStatus]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-app">
+    <div className="app-frame relative flex h-full flex-col overflow-hidden bg-app">
+      <WindowEdges />
       <Titlebar />
       <div className="relative flex min-h-0 flex-1">
         <Sidebar />

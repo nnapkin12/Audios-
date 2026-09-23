@@ -1,6 +1,6 @@
 [package]
 name = "audios"
-version = "0.1.8"
+version = "0.1.9"
 description = "A local music player and metadata editor"
 authors = ["Audios Player contributors"]
 edition = "2021"
@@ -29,6 +29,10 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 thiserror = "2"
 walkdir = "2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Published crates.io feature. It enables souvlaki's own zbus 3 dependency.
+souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }
 
 [dev-dependencies]
 tempfile = "3"

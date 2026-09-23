@@ -29,7 +29,7 @@ export function NowPlayingBar() {
   const shuffle = snapshot?.shuffle ?? false;
 
   return (
-    <footer className="now-playing-bar h-[92px] shrink-0 items-center gap-4 border-t-2 border-app-bar-line bg-app-bar px-4 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]">
+    <footer className="now-playing-bar relative z-10 h-[92px] shrink-0 items-center gap-4 border-t border-app-bar-line bg-app-bar px-4 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.06)]">
       <button
         type="button"
         onClick={() => setNowPlayingOpen(true)}
@@ -52,8 +52,12 @@ export function NowPlayingBar() {
         </div>
       </button>
 
-      <div className="flex flex-col items-center gap-1.5">
-        <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-col items-center gap-1.5">
+        <div className="relative flex items-center justify-center">
+          <div className="absolute right-full mr-2">
+            <SpeedControl />
+          </div>
+          <div className="flex items-center gap-2">
           <IconButton
             label="Shuffle"
             active={shuffle}
@@ -94,7 +98,7 @@ export function NowPlayingBar() {
               <Repeat key={repeat} size={15} className="t-pop" />
             )}
           </IconButton>
-          <SpeedControl />
+          </div>
         </div>
         <TransportSeek
           tone="bar"
@@ -104,7 +108,7 @@ export function NowPlayingBar() {
         />
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex min-w-0 items-center justify-end gap-1">
         <IconButton
           label={muted ? "Unmute" : "Mute"}
           onClick={() => void api.setMuted(!muted).catch(() => undefined)}
@@ -119,7 +123,7 @@ export function NowPlayingBar() {
           onChange={(event) => {
             void api.setVolume(Number(event.target.value) / 100).catch(() => undefined);
           }}
-          className="bar-range w-24"
+          className="bar-range bar-volume w-24"
         />
         <IconButton label="Fullscreen" onClick={() => setNowPlayingOpen(true)}>
           <Maximize2 size={16} />

@@ -21,8 +21,11 @@
 - Now-playing bar plus a full now-playing view (`f` to open, `Esc` to close). The full view takes its colors from the album art. The rest of the app stays on your theme.
 - If a song or album folder was moved or renamed, Audios! relinks it when the file name is unique. Otherwise the item stays listed and **Locate** asks you to point at the new path.
 - Transport keys: Space play/pause, arrows seek ±5s, `n` / `p` next / previous.
-- Playback speed on the transport controls, from 0.5× to 2×. Pitch moves with the tempo. Buttons step by 0.05. The number can be typed.
-- Frameless title bar with custom minimize / maximize / close on the top right.
+- Playback speed from 0.5× to 2×. Pitch moves with the tempo. The speed button sits beside the transport so play stays centered. Open it to step by 0.05 or type a number.
+- Linux desktops that speak MPRIS (GNOME, KDE, and other bars) show the current song, album art, and play, pause, seek, next, and previous.
+- The window resizes from its edges. The minimum size is small enough for a tiling window manager to shrink it.
+- Frameless title bar with custom minimize / maximize / close on the top right. A hairline sits on the outer edge.
+- An AppImage writes its own menu entry on launch (`~/.local/share/applications`), under Multimedia. A `.deb` install does that through the package.
 
 ## Music Search (and save)
 

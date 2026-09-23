@@ -4,11 +4,12 @@ pub mod queue;
 pub mod scan;
 
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::eq::{self, EqPersist, EqUpdate, EqUserPreset};
 use crate::error::{AppError, AppResult};
@@ -80,6 +81,7 @@ pub struct Player {
     logic: Arc<Mutex<Logic>>,
     persist: Store,
     app: AppHandle,
+    media_ping: Arc<Mutex<Option<SyncSender<()>>>>,
 }
 
 impl Player {
@@ -103,6 +105,7 @@ impl Player {
             })),
             persist,
             app,
+            media_ping: Arc::new(Mutex::new(None)),
         };
         crate::search::clear_temps();
         let _ = player.engine.set_eq(eq::EqParams::from_persist(&saved.eq));
@@ -118,6 +121,25 @@ impl Player {
             .expect("player ticker");
 
         player
+    }
+
+    pub fn bind_media(&self, tx: SyncSender<()>) {
+        *self.media_ping.lock().expect("media ping") = Some(tx);
+    }
+
+    pub fn raise_window(&self) {
+        let Some(window) = self.app.get_webview_window("main") else {
+            return;
+        };
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+
+    pub fn quit_window(&self) {
+        if let Some(window) = self.app.get_webview_window("main") {
+            let _ = window.close();
+        }
     }
 
     pub fn snapshot(&self) -> PlayerSnapshot {
@@ -247,6 +269,7 @@ impl Player {
     pub fn seek(&self, position_ms: u64) -> AppResult<PlayerSnapshot> {
         self.engine.seek(position_ms)?;
         self.emit_tick();
+        self.ping_media();
         Ok(self.snapshot())
     }
 
@@ -684,6 +707,14 @@ impl Player {
 
     fn emit_state(&self) {
         let _ = self.app.emit(STATE_EVENT, self.snapshot());
+        self.ping_media();
+    }
+
+    fn ping_media(&self) {
+        let guard = self.media_ping.lock().expect("media ping");
+        if let Some(tx) = guard.as_ref() {
+            let _ = tx.try_send(());
+        }
     }
 
     fn emit_tick(&self) {
