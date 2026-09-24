@@ -27,6 +27,8 @@ export default function App() {
   const setNowPlayingOpen = useAppStore((state) => state.setNowPlayingOpen);
   const setPlaylists = useAppStore((state) => state.setPlaylists);
   const setLibraryRoots = useAppStore((state) => state.setLibraryRoots);
+  const bumpLibrary = useAppStore((state) => state.bumpLibrary);
+  const hasTrack = useAppStore((state) => Boolean(state.snapshot?.current));
   const setAppearance = useAppStore((state) => state.setAppearance);
   const setMinimizeMovement = useAppStore((state) => state.setMinimizeMovement);
 
@@ -76,6 +78,7 @@ export default function App() {
           setPlaylists(playlists);
           setLibraryRoots(roots);
           useAppStore.getState().setMissing(missing);
+          useAppStore.getState().bumpLibrary();
           const browse = useAppStore.getState().browse;
           if (browse.kind === "folder" && !roots.includes(browse.path)) {
             useAppStore.getState().setBrowse({ kind: "home" });
@@ -111,11 +114,13 @@ export default function App() {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
+      const playingNow = Boolean(useAppStore.getState().snapshot?.current);
       if (event.code === "Space") {
+        if (!playingNow) return;
         event.preventDefault();
         void api.toggle();
       }
-      if (event.key === "f") setNowPlayingOpen(true);
+      if (event.key === "f" && playingNow) setNowPlayingOpen(true);
       if (event.key === "ArrowRight") void api.seek((useAppStore.getState().snapshot?.positionMs ?? 0) + 5000);
       if (event.key === "ArrowLeft") void api.seek(Math.max(0, (useAppStore.getState().snapshot?.positionMs ?? 0) - 5000));
       if (event.key === "n") void api.next();
@@ -128,7 +133,7 @@ export default function App() {
       stop.forEach((fn) => fn());
       window.removeEventListener("keydown", onKey);
     };
-  }, [applySnapshot, applyTick, setAppearance, setLibraryRoots, setMinimizeMovement, setNowPlayingOpen, setPlaylists, setStatus]);
+  }, [applySnapshot, applyTick, bumpLibrary, setAppearance, setLibraryRoots, setMinimizeMovement, setNowPlayingOpen, setPlaylists, setStatus]);
 
   return (
     <div className="app-frame relative flex h-full flex-col overflow-hidden bg-app">
@@ -159,9 +164,9 @@ export default function App() {
             </p>
           ) : null}
         </main>
-        {nowPlayingOpen ? <NowPlayingFull /> : null}
+        {nowPlayingOpen && hasTrack ? <NowPlayingFull /> : null}
       </div>
-      {nowPlayingOpen ? null : <NowPlayingBar />}
+      {nowPlayingOpen || !hasTrack ? null : <NowPlayingBar />}
     </div>
   );
 }

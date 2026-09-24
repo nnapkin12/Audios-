@@ -1,34 +1,217 @@
-import { useState, type MouseEvent } from "react";
-import { Music, Plus, X } from "lucide-react";
-import { invalidateBrowse, locateMissing, openBrowsePage, samePage } from "@/features/player/browse";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { ArrowLeft, Compass, ListMusic, Music, Plus } from "lucide-react";
+import { goBack, invalidateBrowse, locateMissing, openBrowsePage, samePage } from "@/features/player/browse";
 import { api, pickAudioFiles, pickFolder, pickImageFile, revealInFiles } from "@/lib/api";
-import { PlaylistCover, dropPlaylistCover } from "@/lib/covers";
+import { CoverPicture, PlaylistCover, dropPlaylistCover, useNearView } from "@/lib/covers";
 import { baseName, errorMessage } from "@/lib/format";
 import type { Playlist } from "@/lib/types";
 import type { MenuEntry } from "@/features/shell/ContextMenu";
 import { useAppStore } from "@/store/useAppStore";
 
-export function LibraryNav({
-  creating,
-  setCreating,
+export function BrowseBack() {
+  const canGoBack = useAppStore((state) => state.canGoBack);
+  if (!canGoBack) return null;
+  return (
+    <button
+      type="button"
+      title="Back"
+      onClick={() => void goBack()}
+      className="mb-3 flex h-9 w-9 items-center justify-center rounded-full text-app-text hover:bg-app-hover"
+    >
+      <ArrowLeft size={20} />
+    </button>
+  );
+}
+
+export function LibraryNav() {
+  const browse = useAppStore((state) => state.browse);
+  const libraryActive = browse.kind === "library" || browse.kind === "folder";
+  const playlistActive = browse.kind === "playlists" || browse.kind === "playlist";
+  const discoverActive = browse.kind === "discover" || browse.kind === "artist" || browse.kind === "album";
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
+      <NavEntry
+        active={browse.kind === "home"}
+        label="Audios!"
+        icon={<img src="/audios.png" alt="" className="h-8 w-8 rounded-md bg-white object-cover" />}
+        onClick={() => void openBrowsePage({ kind: "home" })}
+      />
+      <NavEntry
+        active={discoverActive}
+        label="Discover"
+        icon={<Compass size={18} className="text-app-muted" />}
+        onClick={() => void openBrowsePage({ kind: "discover" })}
+      />
+      <NavEntry
+        active={libraryActive}
+        label="Library"
+        icon={<Music size={18} className="text-app-muted" />}
+        onClick={() => void openBrowsePage({ kind: "library" })}
+      />
+      <NavEntry
+        active={playlistActive}
+        label="Playlists"
+        icon={<ListMusic size={18} className="text-app-muted" />}
+        onClick={() => void openBrowsePage({ kind: "playlists" })}
+      />
+    </div>
+  );
+}
+
+function NavEntry({
+  active,
+  label,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-lg px-2 py-2 text-left ${
+        active ? "bg-app-hover" : "hover:bg-app-hover"
+      }`}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center">{icon}</span>
+      <span className="truncate text-[15px] font-semibold">{label}</span>
+    </button>
+  );
+}
+
+export function LibraryPage({
   onMenu,
   onAddFile,
   onAddFolder,
 }: {
-  creating: boolean;
-  setCreating: (value: boolean) => void;
   onMenu: (event: MouseEvent, items: MenuEntry[]) => void;
   onAddFile: () => void;
   onAddFolder: () => void;
 }) {
-  const playlists = useAppStore((state) => state.playlists);
   const libraryRoots = useAppStore((state) => state.libraryRoots);
   const missing = useAppStore((state) => state.missing);
-  const browse = useAppStore((state) => state.browse);
-  const setPlaylists = useAppStore((state) => state.setPlaylists);
   const setLibraryRoots = useAppStore((state) => state.setLibraryRoots);
   const setStatus = useAppStore((state) => state.setStatus);
+
+  async function removeRoot(path: string) {
+    try {
+      const roots = await api.removeLibraryRoot(path);
+      setLibraryRoots(roots);
+      const browse = useAppStore.getState().browse;
+      if (browse.kind === "folder" && browse.path === path) {
+        await openBrowsePage({ kind: "library" });
+      }
+    } catch (error) {
+      setStatus(errorMessage(error, "Couldn't remove this"));
+    }
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
+      <BrowseBack />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <h1 className="text-[28px] font-semibold tracking-tight text-app-text">Library</h1>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onAddFile}
+            className="rounded-md px-3 py-1.5 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
+          >
+            Play a song
+          </button>
+          <button
+            type="button"
+            onClick={onAddFolder}
+            className="rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg"
+          >
+            Add music
+          </button>
+        </div>
+      </div>
+      {libraryRoots.length === 0 ? (
+        <p className="mt-6 max-w-lg text-[15px] font-medium leading-6 text-app-muted">
+          Add a folder of audio files. Each folder shows up here with its artwork.
+        </p>
+      ) : (
+        <div className="cover-grid mt-6">
+          {libraryRoots.map((path) => {
+            const gone = missing.some((item) => item.scope === "library" && item.path === path);
+            return (
+              <button
+                key={path}
+                type="button"
+                onClick={() => void openBrowsePage({ kind: "folder", path })}
+                onContextMenu={(event) => onMenu(event, folderMenu(path, removeRoot, setStatus))}
+                className="rounded-2xl p-3 text-center hover:bg-app-hover"
+              >
+                <FolderArt path={path} />
+                <span className={`mt-3 block truncate text-[16px] font-semibold ${gone ? "text-app-danger" : "text-app-text"}`}>
+                  {baseName(path)}
+                  {gone ? " missing" : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FolderArt({ path }: { path: string }) {
+  const near = useNearView();
+  const libraryEpoch = useAppStore((state) => state.libraryEpoch);
+  const [paths, setPaths] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    if (!near.ready) return;
+    let cancelled = false;
+    setPaths(null);
+    void api.scanTracks(path, true).then((tracks) => {
+      if (!cancelled) setPaths(tracks.slice(0, 4).map((track) => track.path));
+    }).catch(() => {
+      if (!cancelled) setPaths([]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [path, libraryEpoch, near.ready]);
+
+  if (!near.ready || !paths || paths.length === 0) {
+    return (
+      <div
+        ref={near.ref}
+        className="aspect-square w-full rounded-xl bg-gradient-to-br from-app-hover to-app"
+      />
+    );
+  }
+  if (paths.length === 1) {
+    return <CoverPicture path={paths[0]} className="aspect-square h-auto w-full rounded-xl" />;
+  }
+  return (
+    <div className="grid aspect-square w-full grid-cols-2 grid-rows-2 overflow-hidden rounded-xl">
+      {Array.from({ length: 4 }, (_, index) => paths[index] ?? paths[index % paths.length]).map((file, index) => (
+        <CoverPicture key={`${file}:${index}`} path={file} className="h-full w-full rounded-none" />
+      ))}
+    </div>
+  );
+}
+
+export function PlaylistsPage({
+  onMenu,
+}: {
+  onMenu: (event: MouseEvent, items: MenuEntry[]) => void;
+}) {
+  const playlists = useAppStore((state) => state.playlists);
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const setPlaylists = useAppStore((state) => state.setPlaylists);
+  const setStatus = useAppStore((state) => state.setStatus);
 
   async function create() {
     try {
@@ -43,114 +226,23 @@ export function LibraryNav({
     }
   }
 
-  async function removeRoot(path: string) {
-    try {
-      const roots = await api.removeLibraryRoot(path);
-      setLibraryRoots(roots);
-      if (browse.kind === "folder" && browse.path === path) {
-        await openBrowsePage({ kind: "home" });
-      }
-    } catch (error) {
-      setStatus(errorMessage(error, "Couldn't remove this"));
-    }
-  }
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <button
-        type="button"
-        onClick={() => void openBrowsePage({ kind: "home" })}
-        className={`mb-3 flex items-center gap-2 rounded-lg px-2 py-2 text-left ${
-          browse.kind === "home" ? "bg-app-hover" : "hover:bg-app-hover"
-        }`}
-      >
-        <img src="/audios.png" alt="" className="h-8 w-8 rounded-md bg-white object-cover" />
-        <span className="truncate text-[15px] font-semibold">Audios!</span>
-      </button>
-
-      <div className="mb-1 flex items-center justify-between gap-2 px-1 pb-1">
-        <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
-          Library
-        </p>
-        <div className="flex gap-1">
-          <button
-            type="button"
-            title="Play a song"
-            onClick={onAddFile}
-            className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
-          >
-            Play song
-          </button>
-          <button
-            type="button"
-            title="Add music to your library"
-            onClick={onAddFolder}
-            className="rounded-md px-2 py-1 text-[13px] font-semibold text-app-subtle hover:bg-app-hover"
-          >
-            Add music
-          </button>
-        </div>
-      </div>
-      {libraryRoots.length === 0 ? (
-        <p className="mb-3 px-1 text-[13px] leading-5 text-app-muted">
-          Add music to get started.
-        </p>
-      ) : (
-        <div className="mb-3 flex flex-col gap-0.5">
-          {libraryRoots.map((path) => {
-            const active = browse.kind === "folder" && browse.path === path;
-            const gone = missing.some((item) => item.scope === "library" && item.path === path);
-            return (
-              <div
-                key={path}
-                className={`flex items-center gap-1 rounded-md pr-1 ${
-                  active ? "bg-app-hover" : "hover:bg-app-hover"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => void openBrowsePage({ kind: "folder", path })}
-                  onContextMenu={(event) =>
-                    onMenu(event, folderMenu(path, removeRoot, setStatus))
-                  }
-                  className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
-                >
-                  <Music size={15} className="shrink-0 text-app-muted" />
-                  <span className={`truncate text-[14px] font-semibold ${gone ? "text-app-danger" : ""}`}>
-                    {baseName(path)}
-                    {gone ? " missing" : ""}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  title="Remove from library"
-                  onClick={() => void removeRoot(path)}
-                  className="rounded p-1 text-app-muted hover:text-app-danger"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between px-1 pb-1">
-        <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
-          Playlists
-        </p>
+    <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
+      <BrowseBack />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <h1 className="text-[28px] font-semibold tracking-tight text-app-text">Playlists</h1>
         <button
           type="button"
-          title="New playlist"
           onClick={() => setCreating(true)}
-          className="rounded-md p-1 text-app-subtle hover:bg-app-hover hover:text-app-text"
+          className="flex items-center gap-1.5 rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg"
         >
-          <Plus size={16} />
+          <Plus size={14} />
+          New playlist
         </button>
       </div>
       {creating ? (
         <form
-          className="mb-2 px-1"
+          className="mt-4 max-w-sm"
           onSubmit={(event) => {
             event.preventDefault();
             void create();
@@ -164,22 +256,18 @@ export function LibraryNav({
               if (!name.trim()) setCreating(false);
             }}
             placeholder="Playlist name"
-            className="w-full rounded-md border border-app-border bg-app px-2 py-1.5 text-[14px]"
+            className="w-full rounded-lg border border-app-border bg-app-raised px-3 py-2.5 text-[15px]"
           />
         </form>
       ) : null}
       {playlists.length === 0 && !creating ? (
-        <p className="px-1 text-[13px] leading-5 text-app-muted">
-          Press + to make a playlist, then add songs.
+        <p className="mt-6 max-w-lg text-[15px] font-medium leading-6 text-app-muted">
+          Make a playlist, then add songs or a folder to it.
         </p>
       ) : (
-        <div className="flex flex-col gap-0.5">
+        <div className="cover-grid mt-6">
           {playlists.map((playlist) => (
-            <PlaylistRow
-              key={playlist.id}
-              playlist={playlist}
-              onMenu={onMenu}
-            />
+            <PlaylistCard key={playlist.id} playlist={playlist} onMenu={onMenu} />
           ))}
         </div>
       )}
@@ -187,23 +275,21 @@ export function LibraryNav({
   );
 }
 
-function PlaylistRow({
+function PlaylistCard({
   playlist,
   onMenu,
 }: {
   playlist: Playlist;
   onMenu: (event: MouseEvent, items: MenuEntry[]) => void;
 }) {
-  const browse = useAppStore((state) => state.browse);
   const setPlaylists = useAppStore((state) => state.setPlaylists);
   const setStatus = useAppStore((state) => state.setStatus);
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(playlist.name);
-  const active = browse.kind === "playlist" && browse.id === playlist.id;
 
-  async function playFrom(startPath?: string) {
+  async function playFrom() {
     try {
-      useAppStore.getState().applySnapshot(await api.playPlaylist(playlist.id, startPath));
+      useAppStore.getState().applySnapshot(await api.playPlaylist(playlist.id));
     } catch (error) {
       setStatus(errorMessage(error, "Could not play playlist"));
     }
@@ -213,18 +299,14 @@ function PlaylistRow({
     const paths = await pickAudioFiles();
     if (paths.length === 0) return;
     setPlaylists(await api.addToPlaylist(playlist.id, paths));
-    dropPlaylistCover(playlist.id);
-    invalidateBrowse("playlist", playlist.id);
-    if (active) await openBrowsePage({ kind: "playlist", id: playlist.id }, true);
+    refreshPlaylist(playlist.id);
   }
 
   async function addFolder() {
     const folder = await pickFolder("Add album");
     if (!folder) return;
     setPlaylists(await api.addToPlaylist(playlist.id, [folder]));
-    dropPlaylistCover(playlist.id);
-    invalidateBrowse("playlist", playlist.id);
-    if (active) await openBrowsePage({ kind: "playlist", id: playlist.id }, true);
+    refreshPlaylist(playlist.id);
   }
 
   async function commitRename() {
@@ -265,49 +347,37 @@ function PlaylistRow({
   async function remove() {
     dropPlaylistCover(playlist.id);
     setPlaylists(await api.deletePlaylist(playlist.id));
-    if (active) await openBrowsePage({ kind: "home" });
+    const browse = useAppStore.getState().browse;
+    if (browse.kind === "playlist" && browse.id === playlist.id) {
+      await openBrowsePage({ kind: "playlists" });
+    }
   }
 
   return (
-    <div
-      className={`flex items-center gap-1 rounded-md pr-1 ${
-        active ? "bg-app-hover" : "hover:bg-app-hover"
-      }`}
-    >
+    <div className="rounded-2xl p-3 text-center hover:bg-app-hover">
       {renaming ? (
         <form
-          className="min-w-0 flex-1 px-1 py-1"
           onSubmit={(event) => {
             event.preventDefault();
             void commitRename();
           }}
         >
+          <PlaylistCover id={playlist.id} iconSize={56} className="aspect-square h-auto w-full rounded-xl" />
           <input
             autoFocus
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onBlur={() => void commitRename()}
-            className="w-full rounded-md border border-app-border bg-app px-2 py-1 text-[13px]"
+            className="mt-3 w-full rounded-md border border-app-border bg-app px-2 py-1 text-center text-[16px] font-semibold"
           />
         </form>
       ) : (
         <button
           type="button"
           onClick={() => void openBrowsePage({ kind: "playlist", id: playlist.id })}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            setDraft(playlist.name);
-            setRenaming(true);
-          }}
           onContextMenu={(event) =>
             onMenu(event, [
-              {
-                kind: "action",
-                action: {
-                  label: "Open",
-                  onClick: () => void openBrowsePage({ kind: "playlist", id: playlist.id }),
-                },
-              },
+              { kind: "action", action: { label: "Open", onClick: () => void openBrowsePage({ kind: "playlist", id: playlist.id }) } },
               { kind: "action", action: { label: "Play", onClick: () => void playFrom() } },
               {
                 kind: "action",
@@ -321,39 +391,23 @@ function PlaylistRow({
               },
               { kind: "action", action: { label: "Change picture", onClick: () => void changeCover() } },
               ...(playlist.hasCover
-                ? ([
-                    {
-                      kind: "action",
-                      action: { label: "Remove picture", onClick: () => void removeCover() },
-                    },
-                  ] satisfies MenuEntry[])
+                ? ([{ kind: "action", action: { label: "Remove picture", onClick: () => void removeCover() } }] satisfies MenuEntry[])
                 : []),
               { kind: "action", action: { label: "Add songs", onClick: () => void addFiles() } },
               { kind: "action", action: { label: "Add album", onClick: () => void addFolder() } },
               { kind: "sep" },
-              {
-                kind: "action",
-                action: { label: "Delete playlist", danger: true, onClick: () => void remove() },
-              },
+              { kind: "action", action: { label: "Delete playlist", danger: true, onClick: () => void remove() } },
             ])
           }
-          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+          className="w-full text-center"
         >
-          <PlaylistCover
-            id={playlist.id}
-            className="h-10 w-10 rounded-md"
-          />
-          <span className="truncate text-[14px] font-semibold">{playlist.name}</span>
+          <PlaylistCover id={playlist.id} iconSize={56} className="aspect-square h-auto w-full rounded-xl" />
+          <span className="mt-3 block truncate text-[16px] font-semibold text-app-text">{playlist.name}</span>
+          <span className="block truncate text-[14px] font-medium text-app-muted">
+            {playlist.items.length} item{playlist.items.length === 1 ? "" : "s"}
+          </span>
         </button>
       )}
-      <button
-        type="button"
-        title="Delete playlist"
-        onClick={() => void remove()}
-        className="rounded p-1 text-app-muted hover:text-app-danger"
-      >
-        <X size={14} />
-      </button>
     </div>
   );
 }
@@ -446,48 +500,4 @@ function refreshPlaylist(playlistId: string) {
   if (samePage(browse, { kind: "playlist", id: playlistId })) {
     void openBrowsePage({ kind: "playlist", id: playlistId }, true);
   }
-}
-
-export function AddToPlaylistButton({ path }: { path: string }) {
-  const playlists = useAppStore((state) => state.playlists);
-  const setPlaylists = useAppStore((state) => state.setPlaylists);
-  const [open, setOpen] = useState(false);
-  if (playlists.length === 0) return null;
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        title="Add to playlist"
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpen((value) => !value);
-        }}
-        className="rounded p-0.5 text-app-muted hover:text-app-text"
-      >
-        <Plus size={13} />
-      </button>
-      {open ? (
-        <div className="absolute right-0 z-10 mt-1 min-w-[140px] rounded-md border border-app-border bg-app-raised py-1 shadow-lg">
-          {playlists.map((playlist) => (
-            <button
-              key={playlist.id}
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                void api.addToPlaylist(playlist.id, [path]).then((list) => {
-                  setPlaylists(list);
-                  refreshPlaylist(playlist.id);
-                });
-                setOpen(false);
-              }}
-              className="block w-full truncate px-2 py-1 text-left text-[13px] hover:bg-app-hover"
-            >
-              {playlist.name}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
 }

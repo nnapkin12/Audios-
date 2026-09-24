@@ -89,6 +89,8 @@ pub fn run() {
             commands::set_playlist_cover,
             commands::clear_playlist_cover,
             commands::playlist_cover,
+            commands::set_artist_image,
+            commands::artist_image,
             commands::list_missing,
             commands::relink_missing,
             commands::get_appearance,

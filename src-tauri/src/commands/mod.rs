@@ -314,6 +314,16 @@ pub fn playlist_cover(store: State<Store>, id: String) -> AppResult<Option<Cover
 }
 
 #[tauri::command]
+pub fn set_artist_image(store: State<Store>, key: String, path: String) -> AppResult<()> {
+    crate::playlists::set_artist_image(&store, &key, &path)
+}
+
+#[tauri::command]
+pub fn artist_image(store: State<Store>, key: String) -> AppResult<Option<CoverArt>> {
+    crate::playlists::artist_image(&store, &key)
+}
+
+#[tauri::command]
 pub fn list_missing(store: State<Store>) -> Vec<crate::relink::MissingItem> {
     crate::relink::list_missing(&store)
 }

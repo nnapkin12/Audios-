@@ -11,15 +11,15 @@ export function LibraryHome() {
       />
       <h1 className="mt-8 text-[42px] font-semibold tracking-tight text-app-text">Audios!</h1>
       <p className="mt-3 max-w-lg text-center text-[15px] font-medium leading-6 text-app-muted">
-        Your music, playlists, and search — all in one place.{" "}
-        <button
-          type="button"
-          onClick={() => void openExternal(GITHUB_URL)}
-          className="font-semibold text-app-accent underline-offset-2 hover:underline"
-        >
-          Star this on GitHub!
-        </button>
+        Audios! takes a folder of audio files and plays them as a library. Artwork, artists, and albums come from the tags in those files.
       </p>
+      <button
+        type="button"
+        onClick={() => void openExternal(GITHUB_URL)}
+        className="mt-4 text-[14px] font-semibold text-app-accent underline-offset-2 hover:underline"
+      >
+        Star this on GitHub
+      </button>
     </div>
   );
 }

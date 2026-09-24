@@ -210,6 +210,9 @@ export const api = {
     invoke<Playlist[]>("set_playlist_cover", { id, path }),
   clearPlaylistCover: (id: string) => invoke<Playlist[]>("clear_playlist_cover", { id }),
   playlistCover: (id: string) => invoke<CoverArt | null>("playlist_cover", { id }),
+  setArtistImage: (key: string, path: string) =>
+    invoke<void>("set_artist_image", { key, path }),
+  artistImage: (key: string) => invoke<CoverArt | null>("artist_image", { key }),
   getAppearance: () => invoke<Appearance>("get_appearance"),
   setAppearance: (theme: string, accent: string) =>
     invoke<Appearance>("set_appearance", { theme, accent }),

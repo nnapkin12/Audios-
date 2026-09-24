@@ -20,6 +20,11 @@ export interface Playlist {
 
 export type BrowsePage =
   | { kind: "home" }
+  | { kind: "discover" }
+  | { kind: "library" }
+  | { kind: "playlists" }
+  | { kind: "artist"; name: string }
+  | { kind: "album"; artist: string; album: string }
   | { kind: "folder"; path: string }
   | { kind: "playlist"; id: string };
 

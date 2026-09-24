@@ -2,7 +2,7 @@
   <img src="https://github.com/nnapkin12/AudiosPlayer/blob/main/public/audios.png" alt="Audios!" width="360">
 </p>
 
-# Audios! full Features list
+# Audios! Features list
 
 ## Music Player
 

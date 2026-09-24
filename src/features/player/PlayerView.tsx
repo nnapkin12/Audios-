@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Pencil, Search, X } from "lucide-react";
+import { BrowseBack, LibraryNav, LibraryPage, PlaylistsPage } from "@/features/player/Playlists";
 import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
 import { filterTracks, invalidateBrowse, locateMissing, openBrowsePage } from "@/features/player/browse";
+import { DiscoverView } from "@/features/player/DiscoverView";
 import { LibraryHome } from "@/features/player/LibraryHome";
-import { LibraryNav } from "@/features/player/Playlists";
 import { TrackList } from "@/features/player/TrackList";
 import { ContextMenu, type MenuEntry } from "@/features/shell/ContextMenu";
 import {
@@ -30,7 +31,6 @@ export function PlayerView() {
   const setStatus = useAppStore((state) => state.setStatus);
   const setLibraryRoots = useAppStore((state) => state.setLibraryRoots);
   const setPlaylists = useAppStore((state) => state.setPlaylists);
-  const [creatingPlaylist, setCreatingPlaylist] = useState(false);
   const [listQuery, setListQuery] = useState("");
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState("");
@@ -97,9 +97,13 @@ export function PlayerView() {
   }
 
   async function playTracks(startPath?: string) {
-    if (visibleTracks.length === 0) return;
+    await playTracksFrom(visibleTracks, startPath);
+  }
+
+  async function playTracksFrom(tracks: Track[], startPath?: string) {
+    if (tracks.length === 0) return;
     try {
-      useAppStore.getState().applySnapshot(await api.playTracks(visibleTracks, startPath));
+      useAppStore.getState().applySnapshot(await api.playTracks(tracks, startPath));
     } catch (error) {
       setStatus(errorMessage(error, "Could not play"));
     }
@@ -149,9 +153,9 @@ export function PlayerView() {
     setMenu({ x: event.clientX, y: event.clientY, items });
   }
 
-  function trackMenu(track: Track): MenuEntry[] {
+  function trackMenu(track: Track, queue: Track[] = visibleTracks): MenuEntry[] {
     return [
-      { kind: "action", action: { label: "Play", onClick: () => void playTracks(track.path) } },
+      { kind: "action", action: { label: "Play", onClick: () => void playTracksFrom(queue, track.path) } },
       {
         kind: "submenu",
         label: "Add to playlist",
@@ -241,24 +245,34 @@ export function PlayerView() {
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto px-2 pb-3">
-          <LibraryNav
-            creating={creatingPlaylist}
-            setCreating={setCreatingPlaylist}
-            onMenu={openMenu}
-            onAddFile={() => void openFile()}
-            onAddFolder={() => void addFolder()}
-          />
+          <LibraryNav />
         </div>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
         {browse.kind === "home" ? (
           <LibraryHome />
+        ) : browse.kind === "library" ? (
+          <LibraryPage
+            onMenu={openMenu}
+            onAddFile={() => void openFile()}
+            onAddFolder={() => void addFolder()}
+          />
+        ) : browse.kind === "playlists" ? (
+          <PlaylistsPage onMenu={openMenu} />
+        ) : browse.kind === "discover" || browse.kind === "artist" || browse.kind === "album" ? (
+          <DiscoverView
+            onPlay={(tracks, startPath) => void playTracksFrom(tracks, startPath)}
+            onContext={(event, track, queue) => openMenu(event, trackMenu(track, queue))}
+          />
         ) : (
           <>
-            <div className="flex flex-wrap items-end justify-between gap-4 px-5 py-4">
+            <div className="px-5 pt-4">
               {browse.kind === "playlist" && playlist ? (
-                <div className="flex min-w-[16rem] flex-1 flex-wrap items-end gap-4">
+                <div className="flex flex-col items-center pb-4 text-center">
+                  <div className="self-start">
+                    <BrowseBack />
+                  </div>
                   <button
                     type="button"
                     title={playlist.hasCover ? "Change picture" : "Add picture"}
@@ -286,14 +300,14 @@ export function PlayerView() {
                   >
                     <PlaylistCover
                       id={playlist.id}
-                      iconSize={56}
-                      className="h-36 w-36 rounded-2xl shadow-[0_18px_40px_rgb(0_0_0_/_0.28)] sm:h-44 sm:w-44"
+                      iconSize={72}
+                      className="h-64 w-64 rounded-2xl shadow-[0_18px_40px_rgb(0_0_0_/_0.28)] sm:h-80 sm:w-80"
                     />
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 text-[13px] font-semibold text-white opacity-0 group-hover:opacity-100">
                       {playlist.hasCover ? "Change" : "Add picture"}
                     </span>
                   </button>
-                  <div className="min-w-0 flex-1 pb-1 text-left">
+                  <div className="mt-4">
                   <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
                     Playlist
                   </p>
@@ -331,19 +345,7 @@ export function PlayerView() {
                   )}
                   <p className="text-[14px] font-medium text-app-muted">{countLabel}</p>
                   </div>
-                </div>
-              ) : (
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
-                    Library
-                  </p>
-                  <p className="truncate text-[22px] font-semibold text-app-text">{title}</p>
-                  <p className="text-[14px] font-medium text-app-muted">{countLabel}</p>
-                </div>
-              )}
-              <div className="flex shrink-0 flex-wrap gap-2">
-                {browse.kind === "playlist" && playlist ? (
-                  <>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
                     <button
                       type="button"
                       onClick={() => void pickAudioFilesInto(playlist.id)}
@@ -358,19 +360,40 @@ export function PlayerView() {
                     >
                       Add album
                     </button>
-                  </>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={visibleTracks.length === 0 && !currentInPage}
-                  title={showPause ? "Pause" : "Play"}
-                  onClick={() => void playOrToggle()}
-                  className="flex items-center gap-1.5 rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg disabled:opacity-40"
-                >
-                  <PlayPauseIcon playing={showPause} size={14} />
-                  {showPause ? "Pause" : "Play"}
-                </button>
-              </div>
+                    <button
+                      type="button"
+                      disabled={visibleTracks.length === 0 && !currentInPage}
+                      title={showPause ? "Pause" : "Play"}
+                      onClick={() => void playOrToggle()}
+                      className="flex items-center gap-1.5 rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg disabled:opacity-40"
+                    >
+                      <PlayPauseIcon playing={showPause} size={14} />
+                      {showPause ? "Pause" : "Play"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-end justify-between gap-4 pb-4">
+                  <div className="min-w-0">
+                    <BrowseBack />
+                    <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-app-muted">
+                      Library
+                    </p>
+                    <p className="truncate text-[22px] font-semibold text-app-text">{title}</p>
+                    <p className="text-[14px] font-medium text-app-muted">{countLabel}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={visibleTracks.length === 0 && !currentInPage}
+                    title={showPause ? "Pause" : "Play"}
+                    onClick={() => void playOrToggle()}
+                    className="flex items-center gap-1.5 rounded-md bg-app-play px-3 py-1.5 text-[13px] font-semibold text-app-play-fg disabled:opacity-40"
+                  >
+                    <PlayPauseIcon playing={showPause} size={14} />
+                    {showPause ? "Pause" : "Play"}
+                  </button>
+                </div>
+              )}
             </div>
             {missingHere.length > 0 ? (
               <div className="mx-5 mb-3 flex items-center justify-between gap-3 rounded-xl border border-app-border bg-app-raised px-4 py-3">

@@ -22,7 +22,11 @@ export function samePage(left: BrowsePage, right: BrowsePage): boolean {
   if (left.kind !== right.kind) return false;
   if (left.kind === "folder" && right.kind === "folder") return left.path === right.path;
   if (left.kind === "playlist" && right.kind === "playlist") return left.id === right.id;
-  return left.kind === "home" && right.kind === "home";
+  if (left.kind === "artist" && right.kind === "artist") return left.name === right.name;
+  if (left.kind === "album" && right.kind === "album") {
+    return left.artist === right.artist && left.album === right.album;
+  }
+  return left.kind === right.kind;
 }
 
 export function applyTrackMeta(tracks: Track[]): void {
@@ -65,12 +69,24 @@ export async function locateMissing(item: MissingItem, asFolder = false): Promis
 }
 
 let browseGeneration = 0;
+const browsePast: BrowsePage[] = [];
 
-export function openBrowsePage(page: BrowsePage, force = false): Promise<void> {
+export function openBrowsePage(page: BrowsePage, force = false, record = true): Promise<void> {
   const store = useAppStore.getState();
+  if (record && !samePage(store.browse, page)) {
+    browsePast.push(store.browse);
+    store.setCanGoBack(true);
+  }
   store.setBrowse(page);
   store.setTab("player");
   return loadBrowse(page, force, true);
+}
+
+export function goBack(): Promise<void> {
+  const prev = browsePast.pop();
+  useAppStore.getState().setCanGoBack(browsePast.length > 0);
+  if (!prev) return Promise.resolve();
+  return openBrowsePage(prev, false, false);
 }
 
 /** Re-read the open folder or playlist from disk without leaving the current tab. */
@@ -81,7 +97,14 @@ export function refreshOpenBrowse(): Promise<void> {
 async function loadBrowse(page: BrowsePage, force: boolean, clearStatus: boolean): Promise<void> {
   const ticket = ++browseGeneration;
   const store = useAppStore.getState();
-  if (page.kind === "home") {
+  if (
+    page.kind === "home" ||
+    page.kind === "discover" ||
+    page.kind === "artist" ||
+    page.kind === "album" ||
+    page.kind === "library" ||
+    page.kind === "playlists"
+  ) {
     store.setPageTracks([]);
     store.setPageLoading(false);
     return;

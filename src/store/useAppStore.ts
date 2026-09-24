@@ -17,10 +17,12 @@ interface AppState {
   statusTone: StatusTone;
   playlists: Playlist[];
   libraryRoots: string[];
+  libraryEpoch: number;
   missing: MissingItem[];
   browse: BrowsePage;
   pageTracks: Track[];
   pageLoading: boolean;
+  canGoBack: boolean;
   positionMs: number;
   durationMs: number;
   theme: string;
@@ -33,10 +35,12 @@ interface AppState {
   setStatus: (status: string | null, tone?: StatusTone) => void;
   setPlaylists: (playlists: Playlist[]) => void;
   setLibraryRoots: (roots: string[]) => void;
+  bumpLibrary: () => void;
   setMissing: (missing: MissingItem[]) => void;
   setBrowse: (browse: BrowsePage) => void;
   setPageTracks: (tracks: Track[]) => void;
   setPageLoading: (loading: boolean) => void;
+  setCanGoBack: (canGoBack: boolean) => void;
   setTagFocusPath: (path: string | null) => void;
   setAppearance: (theme: string, accent: string, customThemes?: CustomTheme[]) => void;
   setMinimizeMovement: (enabled: boolean) => void;
@@ -54,10 +58,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   statusTone: "error",
   playlists: [],
   libraryRoots: [],
+  libraryEpoch: 0,
   missing: [],
   browse: { kind: "home" },
   pageTracks: [],
   pageLoading: false,
+  canGoBack: false,
   positionMs: 0,
   durationMs: 0,
   theme: "dusk",
@@ -76,10 +82,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ status, statusTone: status ? tone : "error" }),
   setPlaylists: (playlists) => set({ playlists }),
   setLibraryRoots: (libraryRoots) => set({ libraryRoots }),
+  bumpLibrary: () => set({ libraryEpoch: get().libraryEpoch + 1 }),
   setMissing: (missing) => set({ missing }),
   setBrowse: (browse) => set({ browse }),
   setPageTracks: (pageTracks) => set({ pageTracks }),
   setPageLoading: (pageLoading) => set({ pageLoading }),
+  setCanGoBack: (canGoBack) => set({ canGoBack }),
   setTagFocusPath: (tagFocusPath) => set({ tagFocusPath }),
   setAppearance: (theme, accent, customThemes) => {
     const nextThemes = customThemes ?? get().customThemes;

@@ -91,6 +91,30 @@ pub fn clear_cover(store: &Store, id: String) -> AppResult<Vec<Playlist>> {
     Ok(list(store))
 }
 
+pub fn set_artist_image(store: &Store, key: &str, source: &str) -> AppResult<()> {
+    let data = std::fs::read(source)?;
+    let jpeg = encode_cover_jpeg(&data)?;
+    let path = artist_image_file(store, key)?;
+    write_jpeg(&path, &jpeg)
+}
+
+pub fn artist_image(store: &Store, key: &str) -> AppResult<Option<CoverArt>> {
+    Ok(jpeg_from_file(Some(artist_image_file(store, key)?)))
+}
+
+fn artist_image_file(store: &Store, key: &str) -> AppResult<PathBuf> {
+    let trimmed = key.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::msg("missing artist"));
+    }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    trimmed.to_lowercase().hash(&mut hasher);
+    Ok(store
+        .config_dir()
+        .join("artist-images")
+        .join(format!("{:016x}.jpg", hasher.finish())))
+}
+
 pub fn cover(store: &Store, id: &str) -> AppResult<Option<CoverArt>> {
     if let Some(art) = jpeg_from_file(cover_file(store, id)) {
         return Ok(Some(art));
@@ -262,7 +286,7 @@ fn rgb_from_audio(path: &str) -> Option<RgbImage> {
 }
 
 fn compose_mosaic(tiles: &[RgbImage]) -> RgbImage {
-    const CELL: u32 = 256;
+    const CELL: u32 = 512;
     if tiles.len() == 1 {
         return DynamicImage::ImageRgb8(tiles[0].clone())
             .resize_to_fill(CELL * 2, CELL * 2, FilterType::Triangle)
@@ -823,7 +847,7 @@ mod tests {
     fn mosaic_uses_up_to_four_tiles() {
         let red = RgbImage::from_pixel(8, 8, Rgb([200, 20, 20]));
         let mosaic = compose_mosaic(&[red.clone()]);
-        assert_eq!(mosaic.dimensions(), (512, 512));
+        assert_eq!(mosaic.dimensions(), (1024, 1024));
         let mosaic = compose_mosaic(&[
             red,
             RgbImage::from_pixel(8, 8, Rgb([20, 200, 20])),
@@ -831,6 +855,6 @@ mod tests {
             RgbImage::from_pixel(8, 8, Rgb([200, 200, 20])),
         ]);
         assert_eq!(mosaic.get_pixel(10, 10), &Rgb([200, 20, 20]));
-        assert_eq!(mosaic.get_pixel(300, 10), &Rgb([20, 200, 20]));
+        assert_eq!(mosaic.get_pixel(520, 10), &Rgb([20, 200, 20]));
     }
 }
