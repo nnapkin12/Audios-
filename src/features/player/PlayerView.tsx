@@ -175,7 +175,7 @@ export function PlayerView() {
       {
         kind: "action",
         action: {
-          label: "Edit tags",
+          label: "Edit metadata",
           onClick: () => {
             useAppStore.getState().setTagFocusPath(track.path);
             useAppStore.getState().setTab("tags");
@@ -199,7 +199,7 @@ export function PlayerView() {
             {
               kind: "action",
               action: {
-                label: "Remove from playlist",
+                label: "Remove from this playlist",
                 danger: true,
                 onClick: () => {
                   void api.removeFromPlaylist(playlist.id, track.path).then((list) => {
@@ -362,6 +362,13 @@ export function PlayerView() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => void removePlaylist(playlist.id)}
+                      className="rounded-md px-3 py-1.5 text-[13px] font-semibold text-app-danger hover:bg-app-hover"
+                    >
+                      Remove
+                    </button>
+                    <button
+                      type="button"
                       disabled={visibleTracks.length === 0 && !currentInPage}
                       title={showPause ? "Pause" : "Play"}
                       onClick={() => void playOrToggle()}
@@ -482,6 +489,13 @@ function ListSearch({
       </label>
     </div>
   );
+}
+
+async function removePlaylist(playlistId: string) {
+  const list = await api.deletePlaylist(playlistId);
+  dropPlaylistCover(playlistId);
+  useAppStore.getState().setPlaylists(list);
+  await openBrowsePage({ kind: "playlists" });
 }
 
 async function pickAudioFilesInto(playlistId: string) {

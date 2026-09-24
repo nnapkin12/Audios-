@@ -339,7 +339,6 @@ pub fn sync(store: &Store) -> bool {
     let mut changed = Vec::new();
     for playlist in &mut playlists {
         let before = playlist.items.clone();
-        follow_folders(playlist);
         playlist.items.retain(keep_item);
         if playlist.items != before {
             changed.push(playlist.id.clone());
@@ -447,128 +446,6 @@ fn exclude_song(items: &[PlaylistItem], path: &str) -> Vec<PlaylistItem> {
         });
     }
     next
-}
-
-/// A folder that already holds playlist songs becomes a live folder. Songs
-/// dropped in later show up. Songs that were already in that folder and were
-/// not part of the playlist stay out.
-fn follow_folders(playlist: &mut Playlist) {
-    let mut parents: Vec<PathBuf> = playlist
-        .items
-        .iter()
-        .filter(|item| item.kind != "dir" && item.kind != "exclude")
-        .filter_map(|item| {
-            let path = Path::new(&item.path);
-            if !path.is_file() {
-                return None;
-            }
-            path.parent().and_then(|parent| {
-                if parent.is_dir() {
-                    Some(parent.to_path_buf())
-                } else {
-                    None
-                }
-            })
-        })
-        .collect();
-    parents.sort();
-    parents.dedup();
-    let roots: Vec<PathBuf> = parents
-        .iter()
-        .filter(|dir| {
-            !parents
-                .iter()
-                .any(|other| *dir != other && dir.starts_with(other))
-        })
-        .cloned()
-        .collect();
-    for root in roots {
-        if playlist.items.iter().any(|item| {
-            item.kind == "dir"
-                && (same_path(&item.path, &root.to_string_lossy())
-                    || inside(&root.to_string_lossy(), &item.path))
-        }) {
-            continue;
-        }
-        let stored: Vec<String> = playlist
-            .items
-            .iter()
-            .filter(|item| item.kind != "dir" && item.kind != "exclude")
-            .map(|item| item.path.clone())
-            .filter(|path| {
-                inside(path, &root.to_string_lossy()) || same_path(path, &root.to_string_lossy())
-            })
-            .collect();
-        if stored.is_empty() {
-            continue;
-        }
-        let newest = stored
-            .iter()
-            .filter_map(|path| changed_ns(Path::new(path)))
-            .max();
-        let Some(newest) = newest else {
-            continue;
-        };
-        let disk = crate::player::scan::audio_paths(&root).unwrap_or_default();
-        let mut excluded = Vec::new();
-        for file in disk {
-            let song = file.to_string_lossy().to_string();
-            if stored.iter().any(|item| same_path(item, &song)) {
-                continue;
-            }
-            let stamp = changed_ns(&file).unwrap_or(0);
-            if stamp <= newest {
-                excluded.push(song);
-            }
-        }
-        let root_text = root.to_string_lossy().to_string();
-        playlist.items.retain(|item| {
-            if item.kind == "dir" || item.kind == "exclude" {
-                return true;
-            }
-            !inside(&item.path, &root_text)
-        });
-        if !playlist
-            .items
-            .iter()
-            .any(|item| item.kind == "dir" && same_path(&item.path, &root_text))
-        {
-            playlist.items.push(PlaylistItem {
-                path: root_text,
-                kind: "dir".into(),
-            });
-        }
-        for path in excluded {
-            if playlist
-                .items
-                .iter()
-                .any(|item| item.kind == "exclude" && same_path(&item.path, &path))
-            {
-                continue;
-            }
-            playlist.items.push(PlaylistItem {
-                path,
-                kind: "exclude".into(),
-            });
-        }
-    }
-}
-
-fn changed_ns(path: &Path) -> Option<i128> {
-    let meta = path.metadata().ok()?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        return Some(i128::from(meta.ctime()) * 1_000_000_000 + i128::from(meta.ctime_nsec()));
-    }
-    #[cfg(not(unix))]
-    {
-        meta.modified()
-            .ok()?
-            .duration_since(std::time::UNIX_EPOCH)
-            .ok()
-            .map(|stamp| i128::from(stamp.as_nanos() as u64))
-    }
 }
 
 fn keep_item(item: &PlaylistItem) -> bool {
@@ -718,7 +595,7 @@ mod tests {
     }
 
     #[test]
-    fn song_list_picks_up_files_dropped_in_its_folder() {
+    fn one_song_does_not_pull_the_rest_of_its_folder() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::for_test(dir.path());
         let album = dir.path().join("album");
@@ -727,25 +604,39 @@ mod tests {
         let kept = album.join("kept.mp3");
         std::fs::write(&skipped, []).unwrap();
         std::fs::write(&kept, []).unwrap();
-        create(&store, "Late".into()).unwrap();
-        store.update(|data| {
-            data.playlists[0].items = vec![PlaylistItem {
-                path: kept.to_string_lossy().into(),
-                kind: "file".into(),
-            }];
-        });
-        std::thread::sleep(std::time::Duration::from_millis(1100));
-        let added = album.join("added.mp3");
-        std::fs::write(&added, []).unwrap();
-        assert!(sync(&store));
-        let songs = flatten_paths(&store.snapshot().playlists[0]);
-        assert!(songs.iter().any(|song| song.ends_with("kept.mp3")));
-        assert!(songs.iter().any(|song| song.ends_with("added.mp3")));
-        assert!(songs.iter().all(|song| !song.ends_with("skipped.mp3")));
+        let playlists = create(&store, "Late".into()).unwrap();
+        let id = playlists[0].id.clone();
+        let playlists = add_paths(&store, id, vec![kept.to_string_lossy().into()]).unwrap();
+        assert_eq!(playlists[0].items.len(), 1);
+        assert_eq!(playlists[0].items[0].kind, "file");
+        let songs = flatten_paths(&playlists[0]);
+        assert_eq!(songs.len(), 1);
+        assert!(songs[0].ends_with("kept.mp3"));
         std::fs::write(album.join("later.mp3"), []).unwrap();
+        let _ = sync(&store);
         let songs = flatten_paths(&store.snapshot().playlists[0]);
-        assert!(songs.iter().any(|song| song.ends_with("later.mp3")));
-        assert!(songs.iter().all(|song| !song.ends_with("skipped.mp3")));
+        assert_eq!(songs.len(), 1);
+        assert!(songs[0].ends_with("kept.mp3"));
+    }
+
+    #[test]
+    fn nested_folder_does_not_include_its_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::for_test(dir.path());
+        let artist = dir.path().join("artist");
+        let album = artist.join("album");
+        std::fs::create_dir_all(&album).unwrap();
+        std::fs::write(artist.join("loose.mp3"), []).unwrap();
+        std::fs::write(album.join("one.mp3"), []).unwrap();
+        std::fs::write(album.join("two.mp3"), []).unwrap();
+        let playlists = create(&store, "Late".into()).unwrap();
+        let id = playlists[0].id.clone();
+        let playlists = add_paths(&store, id, vec![album.to_string_lossy().into()]).unwrap();
+        assert_eq!(playlists[0].items[0].kind, "dir");
+        let songs = flatten_paths(&playlists[0]);
+        assert_eq!(songs.len(), 2);
+        assert!(songs.iter().all(|song| song.contains("/album/")));
+        assert!(songs.iter().all(|song| !song.ends_with("loose.mp3")));
     }
 
     #[test]

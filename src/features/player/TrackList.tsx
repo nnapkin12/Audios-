@@ -1,4 +1,5 @@
 import { useEffect, useState, type MouseEvent } from "react";
+import { MoreHorizontal } from "lucide-react";
 import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
 import { api } from "@/lib/api";
 import { CoverThumb } from "@/lib/covers";
@@ -109,6 +110,15 @@ export function TrackList({
             <span className="shrink-0 text-[13px] font-semibold tabular-nums text-app-muted">
               {formatTime(track.durationMs)}
             </span>
+            <button
+              type="button"
+              title="Song menu"
+              aria-label="Song menu"
+              onClick={(event) => onContext(event, track, index)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-app-muted hover:bg-app-hover hover:text-app-text"
+            >
+              <MoreHorizontal size={16} />
+            </button>
           </div>
         );
       }}
