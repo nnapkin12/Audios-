@@ -245,7 +245,7 @@ mod tests {
         assert!(data.custom_themes.is_empty());
         assert!(!data.minimize_movement);
         assert!(!data.eq.enabled);
-        assert_eq!(data.eq.gains.len(), 10);
+        assert_eq!(data.eq.bands.len(), 10);
     }
 
     #[test]
@@ -253,11 +253,12 @@ mod tests {
         let mut data = PersistData::default();
         data.eq.enabled = true;
         data.eq.preset_id = "custom-1".into();
-        data.eq.gains = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0];
+        data.eq.bands[0].gain = 1.0;
+        data.eq.bands[9].gain = 2.0;
         data.eq.custom_presets.push(crate::eq::EqUserPreset {
             id: "custom-1".into(),
             name: "Desk".into(),
-            gains: data.eq.gains,
+            bands: data.eq.bands,
             preamp: -2.0,
             auto_preamp: true,
         });
@@ -265,7 +266,12 @@ mod tests {
         let back: PersistData = serde_json::from_str(&raw).unwrap();
         assert_eq!(back.eq.preset_id, "custom-1");
         assert_eq!(back.eq.custom_presets[0].name, "Desk");
-        assert_eq!(back.eq.gains[9], 2.0);
+        assert_eq!(back.eq.bands[9].gain, 2.0);
+        let legacy = r#"{"lastRoot":null,"volume":0.5,"muted":false,"repeat":"off","shuffle":false,"replaygain":true,"gapless":true,"positions":{},"eq":{"enabled":true,"presetId":"custom","gains":[4,0,0,0,0,0,0,0,0,1],"preamp":-1,"autoPreamp":true}}"#;
+        let old: PersistData = serde_json::from_str(legacy).unwrap();
+        assert_eq!(old.eq.bands[0].freq, 32.0);
+        assert_eq!(old.eq.bands[0].gain, 4.0);
+        assert_eq!(old.eq.bands[9].gain, 1.0);
     }
 
     #[test]

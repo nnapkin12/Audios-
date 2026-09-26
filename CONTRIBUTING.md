@@ -20,7 +20,7 @@ Tauri returns command errors as strings. Use `errorMessage()` from [`src/lib/for
 
 ## Player
 
-Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.rs`](src-tauri/src/player/engine.rs) (rodio + Symphonia). The graphic EQ wraps each decoder in [`src-tauri/src/eq.rs`](src-tauri/src/eq.rs) on that audio thread. Queue order, repeat, and shuffle are pure logic in [`src-tauri/src/player/queue.rs`](src-tauri/src/player/queue.rs) and should stay unit-tested there.
+Playback goes through the `PlayerEngine` trait in [`src-tauri/src/player/engine.rs`](src-tauri/src/player/engine.rs) (rodio + Symphonia). The parametric EQ wraps each decoder in [`src-tauri/src/eq.rs`](src-tauri/src/eq.rs) on that audio thread. One band list feeds both the tone sliders and Advanced in Settings → Equalizer. Do not add a second graphic-EQ processor. Queue order, repeat, and shuffle are pure logic in [`src-tauri/src/player/queue.rs`](src-tauri/src/player/queue.rs) and should stay unit-tested there.
 
 ## Search
 

@@ -68,6 +68,7 @@ pub fn run() {
             commands::set_eq,
             commands::save_custom_eq,
             commands::delete_custom_eq,
+            commands::import_parametric_eq,
             commands::read_tags,
             commands::write_tags,
             commands::batch_write,

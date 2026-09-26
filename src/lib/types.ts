@@ -91,6 +91,7 @@ export interface PlayerSnapshot {
   replaygain: boolean;
   gapless: boolean;
   speed: number;
+  sampleRate?: number;
   eq?: EqState;
   root: string | null;
   tree: FolderNode | null;

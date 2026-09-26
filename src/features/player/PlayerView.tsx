@@ -300,8 +300,8 @@ export function PlayerView() {
                   >
                     <PlaylistCover
                       id={playlist.id}
-                      iconSize={72}
-                      className="h-64 w-64 rounded-2xl shadow-[0_18px_40px_rgb(0_0_0_/_0.28)] sm:h-80 sm:w-80"
+                      iconSize={32}
+                      className="h-32 w-32 rounded-2xl shadow-[0_18px_40px_rgb(0_0_0_/_0.28)]"
                     />
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/45 text-[13px] font-semibold text-white opacity-0 group-hover:opacity-100">
                       {playlist.hasCover ? "Change" : "Add picture"}

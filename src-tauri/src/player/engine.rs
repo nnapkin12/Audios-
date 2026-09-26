@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::Arc;
 use std::time::Duration;
@@ -49,6 +49,7 @@ struct Shared {
     queued: AtomicUsize,
     empty: AtomicBool,
     playing: AtomicBool,
+    sample_rate: AtomicU32,
 }
 
 pub struct RodioEngine {
@@ -67,6 +68,7 @@ impl RodioEngine {
             queued: AtomicUsize::new(0),
             empty: AtomicBool::new(true),
             playing: AtomicBool::new(false),
+            sample_rate: AtomicU32::new(48_000),
         });
         let eq = Arc::new(EqShared::default());
         let thread_shared = Arc::clone(&shared);
@@ -85,6 +87,15 @@ impl RodioEngine {
             .map_err(|_| AppError::msg("audio thread stopped"))?;
         rx.recv()
             .map_err(|_| AppError::msg("audio thread stopped"))?
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        let rate = self.shared.sample_rate.load(Ordering::Relaxed);
+        if rate == 0 {
+            48_000
+        } else {
+            rate
+        }
     }
 }
 
@@ -258,6 +269,10 @@ fn load_into(
         sink.pause();
         shared.duration_ms.store(duration, Ordering::Relaxed);
         shared.position_ms.store(0, Ordering::Relaxed);
+        let rate = decoder.sample_rate();
+        shared
+            .sample_rate
+            .store(if rate == 0 { 48_000 } else { rate }, Ordering::Relaxed);
     }
     // Decode → EQ Source (float biquads) → sink. Volume / ReplayGain stay on the sink.
     sink.append(EqSource::new(decoder, Arc::clone(eq)));

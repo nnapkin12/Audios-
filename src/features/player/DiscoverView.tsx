@@ -332,7 +332,7 @@ function ArtistPage({
         <div className="self-start">
           <BrowseBack />
         </div>
-        <ArtistFace artist={artist} className="h-64 w-64 rounded-2xl sm:h-80 sm:w-80" />
+        <ArtistFace artist={artist} className="h-32 w-32 rounded-2xl" />
         <ArtistImageMenu artistKey={artist.key} />
         <div className="mt-4">
           <button
@@ -426,7 +426,7 @@ function AlbumPage({
         <div className="self-start">
           <BrowseBack />
         </div>
-        <CoverPicture path={album.tracks[0].path} className="h-64 w-64 rounded-2xl sm:h-80 sm:w-80" />
+        <CoverPicture path={album.tracks[0].path} className="h-32 w-32 rounded-2xl" />
         <div className="mt-4">
           <button
             type="button"

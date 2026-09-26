@@ -48,6 +48,8 @@ pub struct PlayerSnapshot {
     pub replaygain: bool,
     pub gapless: bool,
     pub speed: f64,
+    /// Sample rate of the playing file. The equalizer curve uses this, not a fixed 48 kHz.
+    pub sample_rate: u32,
     pub eq: eq::EqState,
     pub root: Option<String>,
     pub tree: Option<FolderNode>,
@@ -168,6 +170,7 @@ impl Player {
             replaygain: logic.replaygain,
             gapless: logic.gapless,
             speed: logic.speed,
+            sample_rate: self.engine.sample_rate(),
             eq: if eq_catalog {
                 eq::state_with_catalog(&logic.eq)
             } else {
@@ -482,6 +485,17 @@ impl Player {
             .update(|data| eq::apply_update(&mut data.eq, &update));
         self.emit_state();
         Ok(self.snapshot())
+    }
+
+    pub fn import_parametric_eq(&self, text: String) -> AppResult<PlayerSnapshot> {
+        let parsed = eq::parse_parametric_eq(&text)?;
+        self.set_eq(EqUpdate {
+            enabled: true,
+            preset_id: eq::WORKING_PRESET_ID.into(),
+            bands: parsed.bands.to_vec(),
+            preamp: parsed.preamp,
+            auto_preamp: true,
+        })
     }
 
     pub fn save_custom_eq(&self, preset: EqUserPreset) -> AppResult<PlayerSnapshot> {

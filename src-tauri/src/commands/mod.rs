@@ -197,6 +197,11 @@ pub fn delete_custom_eq(player: State<Player>, id: String) -> AppResult<PlayerSn
 }
 
 #[tauri::command]
+pub fn import_parametric_eq(player: State<Player>, text: String) -> AppResult<PlayerSnapshot> {
+    player.import_parametric_eq(text)
+}
+
+#[tauri::command]
 pub fn read_tags(path: String) -> AppResult<TagDoc> {
     crate::tags::read_tags(&path)
 }

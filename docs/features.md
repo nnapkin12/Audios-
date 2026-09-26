@@ -11,11 +11,12 @@
 - Library persist across restarts.
 - Queue with next / previous, repeat (off / one / all), and shuffle.
 - Gapless: the next song is appended to the rodio sink before the current track ends.
-- App-wide equalizer on playback. Same curve everywhere. Off / Flat is a bypass. Presets and custom curves in Settings → Playback.
+- App-wide parametric equalizer in Settings → Equalizer. One curve for everything Audios! plays. A response graph shows that curve. Enable turns it on. Flat, and Off, leave the signal alone.
+- Simple view: Bass, Low, Mid, Presence, and Air, each ±12 dB, plus Level and Prevent clipping. Advanced edits frequency, Q, and filter type (peak, low shelf, high shelf) on all ten bands. Paste an AutoEQ ParametricEQ block (preamp, PK, LSC, HSC). Built-in presets cannot be overwritten. Name and save up to 20 of your own; they live in `state.json` with custom themes. An older ten-band graphic curve loads as peaks at the old centers.
 - ReplayGain from track/album tags (can be toggled).
 - Leaving a song forgets its place.
 - Library, playlists, and a virtualized song list.
-- Playlists are created by pressing +. Add a file, or a folder. A folder stays linked, so songs added or removed on disk show up in that playlist. A custom picture can be set from a local image. If none is set, Audios! builds a 2×2 mosaic from up to four embedded track pictures.
+- Playlists are created by pressing +. Add a file, or a folder. A folder stays linked, so songs added or removed on disk show up in that playlist. A custom picture can be set from a local image. If none is set, Audios! builds a 2×2 mosaic from up to four embedded track pictures. On an open playlist, artist, or album, that cover is a small square above the name so more songs stay on screen.
 - Library and playlist views have a search bar that filters the open list.
 - Track rows show a play overlay on the cover when you hover, the current playing track shows pause instead, and clicking it pauses.
 - Now-playing bar plus a full now-playing view (`f` to open, `Esc` to close). The full view takes its colors from the album art. The rest of the app stays on your theme.

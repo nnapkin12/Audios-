@@ -178,6 +178,7 @@ export const api = {
   setEq: (eq: EqUpdate) => invoke<PlayerSnapshot>("set_eq", { eq }),
   saveCustomEq: (preset: EqUserPreset) => invoke<PlayerSnapshot>("save_custom_eq", { preset }),
   deleteCustomEq: (id: string) => invoke<PlayerSnapshot>("delete_custom_eq", { id }),
+  importParametricEq: (text: string) => invoke<PlayerSnapshot>("import_parametric_eq", { text }),
   readTags: (path: string) => invoke<TagDoc>("read_tags", { path }),
   writeTags: (path: string, fields: TagFields) =>
     invoke<TagDoc>("write_tags", { path, fields }),
