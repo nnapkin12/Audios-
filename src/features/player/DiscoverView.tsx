@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import { ChevronDown, Shuffle } from "lucide-react";
+import { ChevronDown, Search, Shuffle, X } from "lucide-react";
 import { PlayPauseIcon } from "@/features/shell/PlayPauseIcon";
 import { TrackList } from "@/features/player/TrackList";
 import {
+  artistKey,
   buildCatalog,
   discoverSongs,
+  filterArtists,
   rememberDiscover,
   shuffleTracks,
   type AlbumGroup,
@@ -166,28 +168,96 @@ export function DiscoverView({
     return <ArtistPage artist={artist} onPlay={onPlay} onContext={onContext} />;
   }
 
-  return <ArtistIndex artists={rememberDiscover(catalog.artists)} untagged={catalog.untagged} />;
+  return (
+    <ArtistIndex
+      featured={rememberDiscover(catalog.artists)}
+      artists={catalog.artists}
+      untagged={catalog.untagged}
+    />
+  );
 }
 
-function ArtistIndex({ artists, untagged }: { artists: ArtistGroup[]; untagged: number }) {
+function ArtistIndex({
+  featured,
+  artists,
+  untagged,
+}: {
+  featured: ArtistGroup[];
+  artists: ArtistGroup[];
+  untagged: number;
+}) {
+  const [query, setQuery] = useState("");
+  const searching = query.trim().length > 0;
+  const matches = useMemo(() => (searching ? filterArtists(artists, query) : featured), [artists, featured, query, searching]);
+
+  function openMatch(name: string) {
+    void openBrowsePage({ kind: "artist", name, all: true });
+  }
+
   return (
     <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
       <BrowseBack />
       <h1 className="text-[28px] font-semibold tracking-tight text-app-text">Discover</h1>
       <p className="mt-1 text-[14px] font-medium text-app-muted">
-        {artists.length === 0 ? "No artist tags in this library." : `${artists.length} artists`}
+        {artists.length === 0
+          ? "No artist tags in this library."
+          : searching
+            ? `${matches.length} artist${matches.length === 1 ? "" : "s"}`
+            : `${featured.length} artists`}
       </p>
+      {artists.length > 0 ? (
+        <form
+          className="mt-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const exact = matches.find((artist) => artist.key === artistKey(query));
+            const pick = exact ?? (matches.length === 1 ? matches[0] : null);
+            if (pick) openMatch(pick.name);
+          }}
+        >
+          <label className="relative block">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-app-muted"
+            />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search artists"
+              className="w-full rounded-lg border border-app-border bg-app-raised py-2.5 pl-9 pr-9 text-[15px] text-app-text"
+            />
+            {query ? (
+              <button
+                type="button"
+                title="Clear search"
+                onClick={() => setQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text"
+              >
+                <X size={14} />
+              </button>
+            ) : null}
+          </label>
+        </form>
+      ) : null}
       {artists.length === 0 ? (
         <p className="mt-6 max-w-lg text-[15px] font-medium leading-6 text-app-muted">
           Songs still play from Library. Artist pages need those tags on the files.
         </p>
+      ) : matches.length === 0 ? (
+        <p className="mt-6 max-w-lg text-[15px] font-medium leading-6 text-app-muted">
+          No artists match that search.
+        </p>
       ) : (
         <div className="cover-grid mt-6">
-          {artists.map((artist) => (
+          {matches.map((artist) => (
             <button
               key={artist.key}
               type="button"
-              onClick={() => void openBrowsePage({ kind: "artist", name: artist.name })}
+              onClick={() =>
+                searching
+                  ? openMatch(artist.name)
+                  : void openBrowsePage({ kind: "artist", name: artist.name })
+              }
               className="rounded-2xl p-3 text-center hover:bg-app-hover"
             >
               <ArtistFace artist={artist} className="aspect-square h-auto w-full rounded-xl" />
@@ -203,7 +273,7 @@ function ArtistIndex({ artists, untagged }: { artists: ArtistGroup[]; untagged: 
           ))}
         </div>
       )}
-      {untagged > 0 && artists.length > 0 ? (
+      {untagged > 0 && artists.length > 0 && !searching ? (
         <p className="mt-6 text-[13px] font-medium text-app-muted">
           {untagged} song{untagged === 1 ? "" : "s"} with no artist tag stay in the folder list.
         </p>
@@ -320,7 +390,8 @@ function ArtistPage({
   onPlay: (tracks: Track[], startPath?: string) => void;
   onContext: (event: MouseEvent, track: Track, queue: Track[]) => void;
 }) {
-  const songs = discoverSongs(artist);
+  const browse = useAppStore((state) => state.browse);
+  const songs = browse.kind === "artist" && browse.all ? artist.tracks : discoverSongs(artist);
   const currentPath = useAppStore((state) => state.snapshot?.current?.path ?? null);
   const playing = useAppStore((state) => state.snapshot?.playing ?? false);
   const inPage = Boolean(currentPath && songs.some((track) => track.path === currentPath));

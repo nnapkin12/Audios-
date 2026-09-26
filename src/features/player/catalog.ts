@@ -179,6 +179,13 @@ export function discoverSongs(artist: ArtistGroup): Track[] {
   return pickedSongs.get(artist.key) ?? artist.tracks.slice(0, SONG_MAX);
 }
 
+/** Match the artist list already built from the library. No second scan. */
+export function filterArtists(artists: ArtistGroup[], query: string): ArtistGroup[] {
+  const needle = artistKey(query);
+  if (!needle) return artists;
+  return artists.filter((artist) => artist.key.includes(needle));
+}
+
 export function shuffleTracks<T>(tracks: T[]): T[] {
   const next = tracks.slice();
   for (let index = next.length - 1; index > 0; index -= 1) {

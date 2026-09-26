@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCatalog, primaryArtist, soloArtists } from "./catalog";
+import { buildCatalog, filterArtists, primaryArtist, soloArtists } from "./catalog";
 import type { Track } from "@/lib/types";
 
 function track(partial: Partial<Track> & Pick<Track, "path">): Track {
@@ -62,5 +62,17 @@ describe("buildCatalog", () => {
       track({ path: "e", artist: "yhapojj/Bea" }),
     ]);
     expect(artists.map((artist) => artist.name)).toEqual(["yhapojj"]);
+  });
+
+  it("finds an artist inside the catalog already built", () => {
+    const { artists } = buildCatalog(
+      Array.from({ length: 200 }, (_, index) =>
+        track({ path: `ada-${index}`, artist: "Ada", album: "First", track: index + 1 }),
+      ).concat([track({ path: "bea", artist: "Bea", album: "Other" })]),
+    );
+    expect(artists[0].tracks).toHaveLength(200);
+    expect(filterArtists(artists, "  ADA ").map((artist) => artist.name)).toEqual(["Ada"]);
+    expect(filterArtists(artists, "zzz")).toEqual([]);
+    expect(filterArtists(artists, "")).toHaveLength(2);
   });
 });

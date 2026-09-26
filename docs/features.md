@@ -18,6 +18,7 @@
 - Library, playlists, and a virtualized song list.
 - Playlists are created by pressing +. Add a file, or a folder. A folder stays linked, so songs added or removed on disk show up in that playlist. A custom picture can be set from a local image. If none is set, Audios! builds a 2×2 mosaic from up to four embedded track pictures. On an open playlist, artist, or album, that cover is a small square above the name so more songs stay on screen.
 - Library and playlist views have a search bar that filters the open list.
+- Discover shows a random handful of artists. Search above that grid finds any artist already in the library and opens every song you have from them. The list only draws the rows on screen.
 - Track rows show a play overlay on the cover when you hover, the current playing track shows pause instead, and clicking it pauses.
 - Now-playing bar plus a full now-playing view (`f` to open, `Esc` to close). The full view takes its colors from the album art. The rest of the app stays on your theme.
 - If a song or album folder was moved or renamed, Audios! relinks it when the file name is unique. Otherwise the item stays listed and **Locate** asks you to point at the new path.

@@ -23,7 +23,7 @@ export type BrowsePage =
   | { kind: "discover" }
   | { kind: "library" }
   | { kind: "playlists" }
-  | { kind: "artist"; name: string }
+  | { kind: "artist"; name: string; all?: boolean }
   | { kind: "album"; artist: string; album: string }
   | { kind: "folder"; path: string }
   | { kind: "playlist"; id: string };
