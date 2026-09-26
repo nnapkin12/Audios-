@@ -4,10 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use base64::Engine as _;
-use lofty::config::{ParseOptions, ParsingMode, WriteOptions};
+use lofty::config::WriteOptions;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::prelude::*;
-use lofty::probe::Probe;
 use lofty::tag::{ItemKey, ItemValue, Tag, TagItem};
 use serde::{Deserialize, Serialize};
 
@@ -400,11 +399,9 @@ pub fn staging_path(path: &Path) -> PathBuf {
 
 fn read_audio(path: &Path) -> AppResult<lofty::file::TaggedFile> {
     // BestAttempt still fails the whole file on a bad ID3 TDRC/TYER. Relaxed
-    // drops that one frame so the rest of the tag can load.
-    Ok(Probe::open(path)?
-        .options(ParseOptions::new().parsing_mode(ParsingMode::Relaxed))
-        .guess_file_type()?
-        .read()?)
+    // drops that one frame so the rest of the tag can load. MP4 files with a
+    // 64-bit mdat size are adjusted in memory; see mp4_recover.
+    crate::mp4_recover::open(path)
 }
 
 fn mutate_tag<F>(path: &Path, mutate: F) -> AppResult<()>
@@ -420,7 +417,13 @@ where
     }
     std::fs::copy(path, &tmp)?;
     let result = (|| -> AppResult<()> {
-        let mut tagged = read_audio(&tmp)?;
+        // A 64-bit `mdat` makes Lofty skip past `moov`. Adjust a copy, then edit that.
+        if crate::mp4_recover::read_lofty(&tmp).is_err() {
+            if let Some(fixed) = crate::mp4_recover::for_lofty(&tmp)? {
+                std::fs::write(&tmp, fixed)?;
+            }
+        }
+        let mut tagged = crate::mp4_recover::read_lofty(&tmp)?;
         if tagged.primary_tag().is_none() && tagged.first_tag().is_none() {
             tagged.insert_tag(Tag::new(tagged.primary_tag_type()));
         }
@@ -998,6 +1001,86 @@ fn encode_jpeg(data: &[u8]) -> AppResult<(Vec<u8>, MimeType)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extended_mdat_is_not_reported_as_a_missing_moov() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("song.m4a");
+        std::fs::write(&path, extended_mdat_bytes()).unwrap();
+        let error = read_tags(path.to_str().unwrap()).unwrap_err().to_string();
+        assert!(!error.to_ascii_lowercase().contains("moov"), "{error}");
+    }
+
+    #[test]
+    fn extended_mdat_file_round_trips_tags_without_touching_audio() {
+        let src =
+            Path::new("/home/napkin/Music/Music/no name playlist/FULLYCHOP - RAPPER RUNTZ.m4a");
+        if !src.is_file() {
+            return;
+        }
+        let original = std::fs::read(src).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("song.m4a");
+        std::fs::write(&path, &original).unwrap();
+        let path_str = path.to_str().unwrap();
+        let before = read_tags(path_str).expect("read");
+        let mut fields = before.fields.clone();
+        fields.title = Some("Recovered title".into());
+        let saved = write_tags(path_str, fields).expect("write");
+        assert_eq!(saved.fields.title.as_deref(), Some("Recovered title"));
+        let again = read_tags(path_str).expect("reread");
+        assert_eq!(again.fields.title.as_deref(), Some("Recovered title"));
+        assert_eq!(again.fields.artists, before.fields.artists);
+        let written = std::fs::read(&path).unwrap();
+        let audio = mdat_payload(&original);
+        let audio_after = mdat_payload(&written);
+        assert_eq!(audio, audio_after);
+    }
+
+    fn mdat_payload(data: &[u8]) -> &[u8] {
+        let mut pos = 0;
+        while pos + 8 <= data.len() {
+            let size32 = u32::from_be_bytes(data[pos..pos + 4].try_into().unwrap());
+            let kind = &data[pos + 4..pos + 8];
+            let (size, header) = if size32 == 1 {
+                let size = u64::from_be_bytes(data[pos + 8..pos + 16].try_into().unwrap()) as usize;
+                (size, 16)
+            } else {
+                (size32 as usize, 8)
+            };
+            if kind == b"mdat" {
+                return &data[pos + header..pos + size];
+            }
+            pos += size;
+        }
+        panic!("mdat missing");
+    }
+
+    fn extended_mdat_bytes() -> Vec<u8> {
+        fn atom(kind: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+            let mut out = Vec::new();
+            out.extend_from_slice(&((8 + payload.len()) as u32).to_be_bytes());
+            out.extend_from_slice(kind);
+            out.extend_from_slice(payload);
+            out
+        }
+        fn extended(kind: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+            let size = 16 + payload.len();
+            let mut out = Vec::new();
+            out.extend_from_slice(&1u32.to_be_bytes());
+            out.extend_from_slice(kind);
+            out.extend_from_slice(&(size as u64).to_be_bytes());
+            out.extend_from_slice(payload);
+            out
+        }
+        let ftyp = atom(b"ftyp", b"M4A \0\0\0\0M4A mp42");
+        let mdat = extended(b"mdat", &[0u8; 32]);
+        let moov = atom(b"moov", &atom(b"mvhd", &[0u8; 32]));
+        let mut file = ftyp;
+        file.extend_from_slice(&mdat);
+        file.extend_from_slice(&moov);
+        file
+    }
 
     #[test]
     fn picture_round_trip_kinds() {

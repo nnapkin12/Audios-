@@ -176,7 +176,7 @@ pub fn track_stub(path: &Path) -> Track {
 pub fn track_from_path(path: &Path) -> Track {
     let mut track = track_stub(path);
 
-    if let Ok(tagged) = lofty::read_from_path(path) {
+    if let Ok(tagged) = crate::mp4_recover::open(path) {
         track.duration_ms = tagged.properties().duration().as_millis() as u64;
         if let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) {
             if let Some(title) = tag.title() {

@@ -6,6 +6,7 @@ mod error;
 mod library;
 #[cfg(target_os = "linux")]
 mod media;
+mod mp4_recover;
 mod persist;
 mod player;
 mod playlists;

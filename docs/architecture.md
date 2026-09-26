@@ -56,6 +56,8 @@ Tracks are sorted by folder, then disc, then track number, then path. Nested fol
 
 The original file is copied to a sibling temp that **keeps the audio extension** (`.song.audios-tmp.mp3`, not `.song.mp3.audios-tmp`). Lofty’s `read_from_path` decides the format from the extension; a `.audios-tmp` suffix makes it report “no format could be determined”. A failed write deletes the temp and leaves the original untouched. Do not write tags in place. Not every container has the same frames. Artwork is sniffed from magic bytes and kept as JPEG/PNG (or converted to JPEG) so a packed WebKit `File.type` of `""` does not label a PNG as JPEG.
 
+MP4-family files (`.m4a`, `.mp4`, and the same container under other names) sometimes store `mdat` with a 64-bit size. Lofty then skips eight bytes past that atom and reports that `moov` is missing. When that size still fits in 32 bits, tag reads use an in-memory copy whose header is rewritten to a normal 8-byte atom. Saving writes that adjustment only onto the staging file, then replaces the original if the tag write succeeds. Audio samples are not rewritten. Chunk offsets move back by those eight bytes.
+
 ## Search (two steps)
 
 1. **List** — `yt-dlp -J --flat-playlist`. A text search runs `ytsearchN:` first, then `scsearchN:` for SoundCloud. A pasted link is passed through as-is, so Bandcamp and other yt-dlp sites work when you have the URL. This step is metadata only. Cover search in Tags stays on YouTube thumbnails and does not download audio. A SoundCloud hit keeps its `webpage_url`; do not turn that id into a YouTube watch URL.
